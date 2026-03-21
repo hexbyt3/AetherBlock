@@ -9,6 +9,24 @@
   Toggle Nintendo server blocks on/off with a polished full-screen UI — no reboot required.
 </p>
 
+<p align="center">
+  <a href="https://github.com/hexbyt3/AetherBlock/releases/latest">
+    <img src="https://img.shields.io/github/v/release/hexbyt3/AetherBlock?style=flat&label=Latest%20Release&color=green" alt="Latest Release">
+  </a>
+  <a href="https://github.com/hexbyt3/AetherBlock/releases/latest">
+    <img src="https://img.shields.io/github/downloads/hexbyt3/AetherBlock/total?style=flat&label=Downloads&color=blue" alt="Total Downloads">
+  </a>
+  <a href="https://github.com/hexbyt3/AetherBlock/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/hexbyt3/AetherBlock?style=flat&color=yellow" alt="License">
+  </a>
+  <a href="https://github.com/hexbyt3/AetherBlock/stargazers">
+    <img src="https://img.shields.io/github/stars/hexbyt3/AetherBlock?style=flat&color=orange" alt="Stars">
+  </a>
+  <a href="https://github.com/hexbyt3/AetherBlock/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/hexbyt3/AetherBlock/build-release.yml?style=flat&label=Build" alt="Build Status">
+  </a>
+</p>
+
 ---
 ## Screenshots
 ![2026032121055300-DB1426D1DFD034027CECDE9C2DD914B8](https://github.com/user-attachments/assets/7609c91c-9802-45bb-8626-27a56e52dc98)
