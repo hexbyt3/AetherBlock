@@ -1,0 +1,9 @@
+build/
+*.elf
+*.map
+*.nro
+*.nacp
+*.pfs0
+*.nso
+.claude/
+aetherblock.bat

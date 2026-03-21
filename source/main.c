@@ -1,0 +1,336 @@
+/**
+ * @file main.c
+ * @brief Application entry point and main event loop for AetherBlock.
+ *
+ * Initializes system services, loads the hosts file, and runs the main
+ * input-handling / rendering loop. Dispatches input events to the
+ * appropriate screen handler (main list, profiles, confirm dialog, etc.).
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <switch.h>
+
+#include "config.h"
+#include "hosts_parser.h"
+#include "dns_reload.h"
+#include "profiles.h"
+#include "input.h"
+#include "ui.h"
+#include "net_test.h"
+
+static HostsFile s_hosts;
+static UIState   s_ui;
+
+static const SDL_Color TOAST_SUCCESS = { 50, 190,  70, 255};
+static const SDL_Color TOAST_WARN    = {230, 185,  40, 255};
+static const SDL_Color TOAST_ERROR   = {230,  55,  55, 255};
+static const SDL_Color TOAST_INFO    = { 70, 135, 220, 255};
+
+static void ensureCursorVisible(void) {
+    int max_visible = (LIST_BOTTOM_Y - LIST_TOP_Y - 8) / ROW_HEIGHT;
+
+    if (s_ui.cursor_index < s_ui.scroll_offset)
+        s_ui.scroll_offset = s_ui.cursor_index;
+    else if (s_ui.cursor_index >= s_ui.scroll_offset + max_visible)
+        s_ui.scroll_offset = s_ui.cursor_index - max_visible + 1;
+
+    if (s_ui.scroll_offset < 0)
+        s_ui.scroll_offset = 0;
+}
+
+static void clampCursor(void) {
+    if (s_hosts.entry_count == 0) {
+        s_ui.cursor_index = 0;
+        return;
+    }
+    if (s_ui.cursor_index < 0)
+        s_ui.cursor_index = 0;
+    if (s_ui.cursor_index >= s_hosts.entry_count)
+        s_ui.cursor_index = s_hosts.entry_count - 1;
+}
+
+static int countHostEntries(void) {
+    int n = 0;
+    for (int i = 0; i < s_hosts.entry_count; i++) {
+        if (!s_hosts.entries[i].is_comment && !s_hosts.entries[i].is_blank)
+            n++;
+    }
+    return n;
+}
+
+static void doSaveAndReload(void) {
+    Result rc = hostsSave(&s_hosts);
+    if (R_FAILED(rc)) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Save failed! (rc=0x%X)", rc);
+        uiShowToast(&s_ui, buf, TOAST_ERROR);
+        return;
+    }
+
+    rc = reloadDnsMitmHostsFile();
+    if (R_FAILED(rc)) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Saved, but DNS reload failed (rc=0x%X)", rc);
+        uiShowToast(&s_ui, buf, TOAST_WARN);
+        return;
+    }
+
+    uiShowToast(&s_ui, "Saved and reloaded DNS hosts successfully!", TOAST_SUCCESS);
+}
+
+static void handleMainList(InputState *input) {
+    int max_visible = (LIST_BOTTOM_Y - LIST_TOP_Y - 8) / ROW_HEIGHT;
+
+    for (int i = 0; i < input->count; i++) {
+        switch (input->events[i]) {
+        case INPUT_UP:
+            s_ui.cursor_index--;
+            clampCursor();
+            ensureCursorVisible();
+            break;
+
+        case INPUT_DOWN:
+            s_ui.cursor_index++;
+            clampCursor();
+            ensureCursorVisible();
+            break;
+
+        case INPUT_LEFT:
+            s_ui.cursor_index -= max_visible;
+            clampCursor();
+            ensureCursorVisible();
+            break;
+
+        case INPUT_RIGHT:
+            s_ui.cursor_index += max_visible;
+            clampCursor();
+            ensureCursorVisible();
+            break;
+
+        case INPUT_A:
+            hostsToggleEntry(&s_hosts, s_ui.cursor_index);
+            break;
+
+        case INPUT_Y:
+            if (s_hosts.dirty)
+                doSaveAndReload();
+            else
+                uiShowToast(&s_ui, "No changes to save.", TOAST_INFO);
+            break;
+
+        case INPUT_X:
+            s_ui.current_screen = SCREEN_PROFILES;
+            s_ui.profile_cursor = 0;
+            break;
+
+        case INPUT_L:
+            /* Launch network connectivity test */
+            if (countHostEntries() > 0) {
+                netTestPrepare(&s_ui.net_test, &s_hosts);
+                s_ui.net_test_scroll = 0;
+                s_ui.current_screen = SCREEN_NET_TEST;
+            } else {
+                uiShowToast(&s_ui, "No entries to test. Seed defaults first.", TOAST_WARN);
+            }
+            break;
+
+        case INPUT_MINUS:
+            profileSeedDefaults(&s_hosts);
+            if (s_hosts.dirty)
+                uiShowToast(&s_ui, "Default entries added! Press Y to save.", TOAST_SUCCESS);
+            else
+                uiShowToast(&s_ui, "All default entries already present.", TOAST_INFO);
+            break;
+
+        case INPUT_PLUS:
+            if (s_hosts.dirty)
+                s_ui.current_screen = SCREEN_CONFIRM;
+            else
+                return;
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
+static void handleProfiles(InputState *input) {
+    for (int i = 0; i < input->count; i++) {
+        switch (input->events[i]) {
+        case INPUT_UP:
+            if (s_ui.profile_cursor > 0)
+                s_ui.profile_cursor--;
+            break;
+
+        case INPUT_DOWN:
+            if (s_ui.profile_cursor < PROFILE_COUNT - 1)
+                s_ui.profile_cursor++;
+            break;
+
+        case INPUT_A:
+            profileApply(&s_hosts, (ProfilePreset)s_ui.profile_cursor);
+            s_ui.current_screen = SCREEN_MAIN_LIST;
+            uiShowToast(&s_ui, "Profile applied! Press Y to save & reload.", TOAST_SUCCESS);
+            break;
+
+        case INPUT_B:
+            s_ui.current_screen = SCREEN_MAIN_LIST;
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
+static void handleStatus(InputState *input) {
+    s_ui.status_msg_timer--;
+
+    if (input->count > 0 || s_ui.status_msg_timer <= 0)
+        s_ui.current_screen = SCREEN_MAIN_LIST;
+}
+
+static void handleConfirm(InputState *input) {
+    for (int i = 0; i < input->count; i++) {
+        switch (input->events[i]) {
+        case INPUT_A:
+            s_hosts.dirty = false;
+            return;
+
+        case INPUT_B:
+            s_ui.current_screen = SCREEN_MAIN_LIST;
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
+static void handleNetTest(InputState *input) {
+    /* Run one test step per frame while tests are active */
+    if (s_ui.net_test.running) {
+        netTestStep(&s_ui.net_test);
+    }
+
+    int row_h = 34;
+    int max_visible = (LIST_BOTTOM_Y - TITLE_BAR_HEIGHT - 16) / row_h;
+
+    for (int i = 0; i < input->count; i++) {
+        switch (input->events[i]) {
+        case INPUT_B:
+            s_ui.net_test.running = false;
+            s_ui.current_screen = SCREEN_MAIN_LIST;
+            break;
+
+        case INPUT_A:
+            /* Re-run tests */
+            if (s_ui.net_test.finished) {
+                netTestPrepare(&s_ui.net_test, &s_hosts);
+                s_ui.net_test_scroll = 0;
+            }
+            break;
+
+        case INPUT_UP:
+            if (s_ui.net_test_scroll > 0)
+                s_ui.net_test_scroll--;
+            break;
+
+        case INPUT_DOWN:
+            if (s_ui.net_test_scroll < s_ui.net_test.count - max_visible)
+                s_ui.net_test_scroll++;
+            if (s_ui.net_test_scroll < 0)
+                s_ui.net_test_scroll = 0;
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    /* Auto-scroll to follow current test */
+    if (s_ui.net_test.running && s_ui.net_test.current >= s_ui.net_test_scroll + max_visible) {
+        s_ui.net_test_scroll = s_ui.net_test.current - max_visible + 1;
+    }
+}
+
+static bool shouldQuit(InputState *input) {
+    for (int i = 0; i < input->count; i++) {
+        if (input->events[i] == INPUT_PLUS && s_ui.current_screen == SCREEN_MAIN_LIST && !s_hosts.dirty)
+            return true;
+    }
+    if (s_ui.current_screen == SCREEN_CONFIRM) {
+        for (int i = 0; i < input->count; i++) {
+            if (input->events[i] == INPUT_A)
+                return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Application entry point.
+ *
+ * Initializes Nintendo Switch services (romfs, fonts, sockets), loads the
+ * hosts file, sets up the UI, and enters the main loop. Cleans up all
+ * resources on exit.
+ */
+int main(int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
+
+    romfsInit();
+    plInitialize(PlServiceType_User);
+    socketInitializeDefault();
+
+    hostsLoad(&s_hosts);
+
+    if (!uiInit(&s_ui)) {
+        plExit();
+        romfsExit();
+        socketExit();
+        return 1;
+    }
+
+    inputInit();
+
+    while (appletMainLoop()) {
+        InputState input;
+        inputPoll(&input);
+
+        if (shouldQuit(&input))
+            break;
+
+        switch (s_ui.current_screen) {
+        case SCREEN_MAIN_LIST:
+            handleMainList(&input);
+            break;
+        case SCREEN_PROFILES:
+            handleProfiles(&input);
+            break;
+        case SCREEN_STATUS:
+            handleStatus(&input);
+            break;
+        case SCREEN_CONFIRM:
+            handleConfirm(&input);
+            break;
+        case SCREEN_NET_TEST:
+            handleNetTest(&input);
+            break;
+        }
+
+        if (shouldQuit(&input))
+            break;
+
+        uiRender(&s_ui, &s_hosts);
+    }
+    uiDestroy(&s_ui);
+    socketExit();
+    plExit();
+    romfsExit();
+
+    return 0;
+}

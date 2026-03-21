@@ -1,0 +1,35 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkita64:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: make
+
+      - name: Package for SD card
+        run: |
+          mkdir -p sdcard/switch/AetherBlock
+          cp AetherBlock.nro sdcard/switch/AetherBlock/
+          cd sdcard
+          zip -r ../AetherBlock.zip .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AetherBlock.zip
+          generate_release_notes: true
