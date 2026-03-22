@@ -9,7 +9,8 @@
 #define SYS_SETTINGS_MAX_LINES  512
 
 typedef enum {
-    SETTING_CAT_NETWORK = 0,
+    SETTING_CAT_UPDATE_SUPPRESS = 0,
+    SETTING_CAT_NETWORK,
     SETTING_CAT_TELEMETRY,
     SETTING_CAT_HOMEBREW,
     SETTING_CAT_COUNT,
@@ -36,7 +37,7 @@ typedef struct {
     bool file_existed;
 } SysSettingsFile;
 
-#define SYS_SETTING_COUNT 9
+#define SYS_SETTING_COUNT 13
 
 extern SysSettingDef g_sys_setting_defs[SYS_SETTING_COUNT];
 
