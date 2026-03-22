@@ -11,16 +11,16 @@ SysSettingDef g_sys_setting_defs[SYS_SETTING_COUNT] = {
        Not in Atmosphere's hardcoded defaults but accepted by the generic INI parser. */
     { "ns.notification", "enable_network_update", "u8", "0x0", "0x1",
       "Block FW Update Check", "Suppress firmware update checking over network",
-      SETTING_CAT_UPDATE_SUPPRESS, false, false, false },
+      SETTING_CAT_UPDATE_SUPPRESS, false, false, true },
     { "ns.notification", "enable_download_task_list", "u8", "0x0", "0x1",
       "Block Download Tasks",  "Suppress background download tasks (updates, etc.)",
-      SETTING_CAT_UPDATE_SUPPRESS, false, false, false },
+      SETTING_CAT_UPDATE_SUPPRESS, false, false, true },
     { "ns.notification", "enable_version_list", "u8", "0x0", "0x1",
       "Block Version List",    "Suppress version list retrieval from Nintendo",
-      SETTING_CAT_UPDATE_SUPPRESS, false, false, false },
+      SETTING_CAT_UPDATE_SUPPRESS, false, false, true },
     { "ns.notification", "enable_download_ticket", "u8", "0x0", "0x1",
       "Block Download Tickets","Suppress download ticket acquisition",
-      SETTING_CAT_UPDATE_SUPPRESS, false, false, false },
+      SETTING_CAT_UPDATE_SUPPRESS, false, false, true },
 
     /* Network / DNS -- verified in settings_sd_kvs.cpp lines 369-378 */
     { "atmosphere", "enable_dns_mitm", "u8", "0x1", "0x0",
