@@ -18,7 +18,7 @@ ROMFS		:=	romfs
 
 APP_TITLE	:=	AetherBlock
 APP_AUTHOR	:=	HeXbyt3
-APP_VERSION	:=	1.0.0
+APP_VERSION	:=	1.0.1
 
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
@@ -27,13 +27,14 @@ CFLAGS	:=	-g -Wall -Wextra -Wno-unused-parameter -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
 
 CFLAGS	+=	$(INCLUDE) -D__SWITCH__ \
-			$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --cflags SDL2_ttf)
+			$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --cflags SDL2_ttf libcurl jansson)
 
 CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS		:=	-g $(ARCH)
 LDFLAGS		=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:=	$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --libs SDL2_ttf) -lnx
+LIBS	:=	$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --libs SDL2_ttf) \
+			-lcurl -ljansson -lmbedtls -lmbedx509 -lmbedcrypto -lz -lnx
 
 #---------------------------------------------------------------------------------
 LIBDIRS	:=	$(PORTLIBS) $(LIBNX)

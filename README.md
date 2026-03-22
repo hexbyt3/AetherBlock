@@ -37,16 +37,27 @@
 
 ## Features
 
-- Changes take effect immediately via Atmosphere's IPC reload (no reboot)
+### DNS Hosts Manager
+- Toggle Nintendo server blocks on/off with changes applied immediately (no reboot)
 - Entries grouped by category: Telemetry, System Updates, Game Content, eShop
-- Color-coded status indicators (red/green)
-- Atomic file writes (tmp + rename) to prevent corruption
-- Auto-detects which hosts file to use (emummc > sysmmc > default)
-- Confirmation dialog if you try to quit with unsaved changes
-- Quick-apply profiles: block all, allow game updates, telemetry only, allow all
+- Quick-apply profiles: Block All, Allow Game Updates, Telemetry Only, Allow All
 - Built-in connectivity test that TCP pings each host on port 443
-- Toast notifications for save/reload/error feedback
-- Scrollbar, alternating row colors, rounded UI elements
+- Auto-detects which hosts file to use (emummc > sysmmc > default)
+- Atomic file writes to prevent corruption
+
+### Atmosphere Settings Manager
+- Toggle verified `system_settings.ini` overrides from a UI (reboot required to apply)
+- All settings sourced from Atmosphere's `settings_sd_kvs.cpp` -- nothing unverified
+- Categories: Network (DNS MITM controls), Telemetry (error uploads), Homebrew (cheats, debug mode, bluetooth DB)
+- Preserves existing comments and manual edits in your INI file
+- Safe for sysnand online play -- all overrides are local only
+
+### Atmosphere Release Checker
+- Fetches the latest Atmosphere release from GitHub in a background thread
+- Shows your current firmware and Atmosphere versions side by side
+- Compares against the latest release and tells you if an update is available
+- Extracts supported firmware version from release notes
+- Scrollable release notes viewer
 
 ## Controls
 
@@ -58,8 +69,13 @@
 | X | Open profiles menu |
 | Y | Save & reload DNS |
 | L | Run server connectivity test |
+| R | Atmosphere settings |
 | - | Seed default Nintendo entries |
 | + | Quit (with unsaved changes check) |
+
+**Settings Screen:** A Toggle | Y Save | X Release Checker | B Back
+
+**Release Checker:** A Refresh | B Back | Up/Down scroll notes
 
 ## Installation
 
@@ -69,26 +85,27 @@
 
 ## Building
 
-Requires [devkitPro](https://devkitpro.org/) with `switch-dev`, `switch-sdl2`, `switch-sdl2_ttf`, and `switch-freetype`.
+Requires [devkitPro](https://devkitpro.org/) with the following packages:
 
 ```bash
-(dkp-)pacman -S switch-dev switch-sdl2 switch-sdl2_ttf switch-freetype
+(dkp-)pacman -S switch-dev switch-sdl2 switch-sdl2_ttf switch-freetype switch-curl switch-jansson switch-mbedtls switch-zlib
 make
 ```
 
 ## How It Works
 
-AetherBlock reads and modifies Atmosphere's hosts file at `/atmosphere/hosts/default.txt`. Entries prefixed with `;` are disabled. Active entries redirect hostnames to `127.0.0.1`.
+**DNS Hosts:** Reads and modifies Atmosphere's hosts file at `/atmosphere/hosts/default.txt`. Entries prefixed with `;` are disabled. After saving, it calls Atmosphere's IPC command 65000 on `sfdnsres` to reload the hosts file in memory -- no reboot needed.
 
-After saving, it calls Atmosphere's IPC command 65000 on `sfdnsres` to reload the hosts file in memory.
+**System Settings:** Reads and modifies `/atmosphere/config/system_settings.ini`. Atmosphere parses this file at boot and overrides the corresponding system settings via its set:sys mitm service. Changes here require a reboot to take effect.
 
-The connectivity test does non-blocking TCP connects on port 443, one host per frame so the UI stays responsive.
+**Release Checker:** Hits the GitHub API (`/repos/Atmosphere-NX/Atmosphere/releases/latest`) on a background thread and parses the JSON response with jansson. Reads local Atmosphere version via `splGetConfig` with config item 65000.
 
 ## Credits
 
 - DNS reload mechanism via [DNS-MITM_Manager](https://github.com/znxDomain/DNS-MITM_Manager) by znxDomain
 - Server list from [NintendoClients Wiki](https://github.com/kinnay/NintendoClients/wiki/Server-List)
-- Built with [libnx](https://github.com/switchbrew/libnx) and [SDL2](https://www.libsdl.org/)
+- Settings verified against [Atmosphere](https://github.com/Atmosphere-NX/Atmosphere) source (`settings_sd_kvs.cpp`)
+- Built with [libnx](https://github.com/switchbrew/libnx), [SDL2](https://www.libsdl.org/), [libcurl](https://curl.se/libcurl/), and [jansson](https://github.com/akheron/jansson)
 
 ## License
 

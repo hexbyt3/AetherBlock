@@ -3,6 +3,8 @@
 #include <string.h>
 #include <switch.h>
 
+#include <curl/curl.h>
+
 #include "config.h"
 #include "hosts_parser.h"
 #include "dns_reload.h"
@@ -10,9 +12,12 @@
 #include "input.h"
 #include "ui.h"
 #include "net_test.h"
+#include "sys_settings.h"
+#include "release_checker.h"
 
-static HostsFile s_hosts;
-static UIState   s_ui;
+static HostsFile       s_hosts;
+static UIState         s_ui;
+static SysSettingsFile s_sys_settings;
 
 static const SDL_Color TOAST_SUCCESS = { 50, 190,  70, 255};
 static const SDL_Color TOAST_WARN    = {230, 185,  40, 255};
@@ -124,6 +129,11 @@ static void handleMainList(InputState *input) {
             } else {
                 uiShowToast(&s_ui, "No entries to test. Seed defaults first.", TOAST_WARN);
             }
+            break;
+
+        case INPUT_R:
+            s_ui.sys_settings_cursor = 0;
+            s_ui.current_screen = SCREEN_SYS_SETTINGS;
             break;
 
         case INPUT_MINUS:
@@ -244,6 +254,87 @@ static void handleNetTest(InputState *input) {
     }
 }
 
+static void handleSysSettings(InputState *input) {
+    for (int i = 0; i < input->count; i++) {
+        switch (input->events[i]) {
+        case INPUT_UP:
+            if (s_ui.sys_settings_cursor > 0)
+                s_ui.sys_settings_cursor--;
+            break;
+
+        case INPUT_DOWN:
+            if (s_ui.sys_settings_cursor < SYS_SETTING_COUNT - 1)
+                s_ui.sys_settings_cursor++;
+            break;
+
+        case INPUT_A:
+            sysSettingsToggle(&s_sys_settings, s_ui.sys_settings_cursor);
+            break;
+
+        case INPUT_Y:
+            if (s_sys_settings.dirty) {
+                Result rc = sysSettingsSave(&s_sys_settings);
+                if (R_SUCCEEDED(rc))
+                    uiShowToast(&s_ui, "Settings saved! Reboot required for changes.", TOAST_SUCCESS);
+                else {
+                    char buf[128];
+                    snprintf(buf, sizeof(buf), "Save failed! (rc=0x%X)", rc);
+                    uiShowToast(&s_ui, buf, TOAST_ERROR);
+                }
+            } else {
+                uiShowToast(&s_ui, "No changes to save.", TOAST_INFO);
+            }
+            break;
+
+        case INPUT_X:
+            releaseReadLocal(&s_ui.release_info);
+            s_ui.release_scroll = 0;
+            s_ui.current_screen = SCREEN_RELEASE_CHECK;
+            releaseFetchAsync(&s_ui.release_info);
+            break;
+
+        case INPUT_B:
+            s_ui.current_screen = SCREEN_MAIN_LIST;
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
+static void handleReleaseCheck(InputState *input) {
+    releaseFetchDone(&s_ui.release_info);
+
+    for (int i = 0; i < input->count; i++) {
+        switch (input->events[i]) {
+        case INPUT_A:
+            if (!s_ui.release_info.thread_running) {
+                releaseReadLocal(&s_ui.release_info);
+                releaseFetchAsync(&s_ui.release_info);
+                s_ui.release_scroll = 0;
+            }
+            break;
+
+        case INPUT_B:
+            s_ui.current_screen = SCREEN_SYS_SETTINGS;
+            break;
+
+        case INPUT_UP:
+            if (s_ui.release_scroll > 0)
+                s_ui.release_scroll--;
+            break;
+
+        case INPUT_DOWN:
+            s_ui.release_scroll++;
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
 static bool shouldQuit(InputState *input) {
     for (int i = 0; i < input->count; i++) {
         if (input->events[i] == INPUT_PLUS && s_ui.current_screen == SCREEN_MAIN_LIST && !s_hosts.dirty)
@@ -265,15 +356,23 @@ int main(int argc, char *argv[]) {
     romfsInit();
     plInitialize(PlServiceType_User);
     socketInitializeDefault();
+    curl_global_init(CURL_GLOBAL_DEFAULT);
 
     hostsLoad(&s_hosts);
 
+    sysSettingsLoad(&s_sys_settings);
+    sysSettingsReadStates(&s_sys_settings);
+
     if (!uiInit(&s_ui)) {
+        curl_global_cleanup();
         plExit();
         romfsExit();
         socketExit();
         return 1;
     }
+
+    s_ui.sys_settings_file = &s_sys_settings;
+    releaseInit(&s_ui.release_info);
 
     inputInit();
 
@@ -300,6 +399,12 @@ int main(int argc, char *argv[]) {
         case SCREEN_NET_TEST:
             handleNetTest(&input);
             break;
+        case SCREEN_SYS_SETTINGS:
+            handleSysSettings(&input);
+            break;
+        case SCREEN_RELEASE_CHECK:
+            handleReleaseCheck(&input);
+            break;
         }
 
         if (shouldQuit(&input))
@@ -308,6 +413,7 @@ int main(int argc, char *argv[]) {
         uiRender(&s_ui, &s_hosts);
     }
     uiDestroy(&s_ui);
+    curl_global_cleanup();
     socketExit();
     plExit();
     romfsExit();
