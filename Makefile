@@ -27,14 +27,13 @@ CFLAGS	:=	-g -Wall -Wextra -Wno-unused-parameter -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
 
 CFLAGS	+=	$(INCLUDE) -D__SWITCH__ \
-			$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --cflags SDL2_ttf libcurl jansson)
+			$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --cflags SDL2_ttf)
 
 CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS		:=	-g $(ARCH)
 LDFLAGS		=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:=	$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --libs SDL2_ttf) \
-			-lcurl -ljansson -lmbedtls -lmbedx509 -lmbedcrypto -lz -lnx
+LIBS	:=	$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --libs SDL2_ttf) -lnx
 
 #---------------------------------------------------------------------------------
 LIBDIRS	:=	$(PORTLIBS) $(LIBNX)

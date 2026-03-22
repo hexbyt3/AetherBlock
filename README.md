@@ -52,13 +52,6 @@
 - Preserves existing comments and manual edits in your INI file
 - Safe for sysnand online play -- all overrides are local only
 
-### Atmosphere Release Checker
-- Fetches the latest Atmosphere release from GitHub in a background thread
-- Shows your current firmware and Atmosphere versions side by side
-- Compares against the latest release and tells you if an update is available
-- Extracts supported firmware version from release notes
-- Scrollable release notes viewer
-
 ## Controls
 
 | Button | Action |
@@ -73,9 +66,7 @@
 | - | Seed default Nintendo entries |
 | + | Quit (with unsaved changes check) |
 
-**Settings Screen:** A Toggle | Y Save | X Release Checker | B Back
-
-**Release Checker:** A Refresh | B Back | Up/Down scroll notes
+**Settings Screen:** A Toggle | Y Save | B Back
 
 ## Installation
 
@@ -88,7 +79,7 @@
 Requires [devkitPro](https://devkitpro.org/) with the following packages:
 
 ```bash
-(dkp-)pacman -S switch-dev switch-sdl2 switch-sdl2_ttf switch-freetype switch-curl switch-jansson switch-mbedtls switch-zlib
+(dkp-)pacman -S switch-dev switch-sdl2 switch-sdl2_ttf switch-freetype
 make
 ```
 
@@ -98,14 +89,12 @@ make
 
 **System Settings:** Reads and modifies `/atmosphere/config/system_settings.ini`. Atmosphere parses this file at boot and overrides the corresponding system settings via its set:sys mitm service. Changes here require a reboot to take effect.
 
-**Release Checker:** Hits the GitHub API (`/repos/Atmosphere-NX/Atmosphere/releases/latest`) on a background thread and parses the JSON response with jansson. Reads local Atmosphere version via `splGetConfig` with config item 65000.
-
 ## Credits
 
 - DNS reload mechanism via [DNS-MITM_Manager](https://github.com/znxDomain/DNS-MITM_Manager) by znxDomain
 - Server list from [NintendoClients Wiki](https://github.com/kinnay/NintendoClients/wiki/Server-List)
 - Settings verified against [Atmosphere](https://github.com/Atmosphere-NX/Atmosphere) source (`settings_sd_kvs.cpp`)
-- Built with [libnx](https://github.com/switchbrew/libnx), [SDL2](https://www.libsdl.org/), [libcurl](https://curl.se/libcurl/), and [jansson](https://github.com/akheron/jansson)
+- Built with [libnx](https://github.com/switchbrew/libnx) and [SDL2](https://www.libsdl.org/)
 
 ## License
 

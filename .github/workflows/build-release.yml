@@ -18,10 +18,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          dkp-pacman -Sy --noconfirm switch-curl switch-jansson switch-mbedtls switch-zlib
-
       - name: Build
         run: make
 

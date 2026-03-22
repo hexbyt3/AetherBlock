@@ -3,8 +3,6 @@
 #include <string.h>
 #include <switch.h>
 
-#include <curl/curl.h>
-
 #include "config.h"
 #include "hosts_parser.h"
 #include "dns_reload.h"
@@ -13,7 +11,6 @@
 #include "ui.h"
 #include "net_test.h"
 #include "sys_settings.h"
-#include "release_checker.h"
 
 static HostsFile       s_hosts;
 static UIState         s_ui;
@@ -133,6 +130,7 @@ static void handleMainList(InputState *input) {
 
         case INPUT_R:
             s_ui.sys_settings_cursor = 0;
+            s_ui.sys_settings_scroll = 0;
             s_ui.current_screen = SCREEN_SYS_SETTINGS;
             break;
 
@@ -286,47 +284,8 @@ static void handleSysSettings(InputState *input) {
             }
             break;
 
-        case INPUT_X:
-            releaseReadLocal(&s_ui.release_info);
-            s_ui.release_scroll = 0;
-            s_ui.current_screen = SCREEN_RELEASE_CHECK;
-            releaseFetchAsync(&s_ui.release_info);
-            break;
-
         case INPUT_B:
             s_ui.current_screen = SCREEN_MAIN_LIST;
-            break;
-
-        default:
-            break;
-        }
-    }
-}
-
-static void handleReleaseCheck(InputState *input) {
-    releaseFetchDone(&s_ui.release_info);
-
-    for (int i = 0; i < input->count; i++) {
-        switch (input->events[i]) {
-        case INPUT_A:
-            if (!s_ui.release_info.thread_running) {
-                releaseReadLocal(&s_ui.release_info);
-                releaseFetchAsync(&s_ui.release_info);
-                s_ui.release_scroll = 0;
-            }
-            break;
-
-        case INPUT_B:
-            s_ui.current_screen = SCREEN_SYS_SETTINGS;
-            break;
-
-        case INPUT_UP:
-            if (s_ui.release_scroll > 0)
-                s_ui.release_scroll--;
-            break;
-
-        case INPUT_DOWN:
-            s_ui.release_scroll++;
             break;
 
         default:
@@ -356,7 +315,6 @@ int main(int argc, char *argv[]) {
     romfsInit();
     plInitialize(PlServiceType_User);
     socketInitializeDefault();
-    curl_global_init(CURL_GLOBAL_DEFAULT);
 
     hostsLoad(&s_hosts);
 
@@ -364,7 +322,6 @@ int main(int argc, char *argv[]) {
     sysSettingsReadStates(&s_sys_settings);
 
     if (!uiInit(&s_ui)) {
-        curl_global_cleanup();
         plExit();
         romfsExit();
         socketExit();
@@ -372,7 +329,6 @@ int main(int argc, char *argv[]) {
     }
 
     s_ui.sys_settings_file = &s_sys_settings;
-    releaseInit(&s_ui.release_info);
 
     inputInit();
 
@@ -402,9 +358,6 @@ int main(int argc, char *argv[]) {
         case SCREEN_SYS_SETTINGS:
             handleSysSettings(&input);
             break;
-        case SCREEN_RELEASE_CHECK:
-            handleReleaseCheck(&input);
-            break;
         }
 
         if (shouldQuit(&input))
@@ -413,7 +366,6 @@ int main(int argc, char *argv[]) {
         uiRender(&s_ui, &s_hosts);
     }
     uiDestroy(&s_ui);
-    curl_global_cleanup();
     socketExit();
     plExit();
     romfsExit();

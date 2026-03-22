@@ -9,7 +9,6 @@
 #include "profiles.h"
 #include "net_test.h"
 #include "sys_settings.h"
-#include "release_checker.h"
 
 typedef enum {
     SCREEN_MAIN_LIST = 0,
@@ -18,7 +17,6 @@ typedef enum {
     SCREEN_STATUS,
     SCREEN_NET_TEST,
     SCREEN_SYS_SETTINGS,
-    SCREEN_RELEASE_CHECK,
 } AppScreen;
 
 typedef struct {
@@ -44,10 +42,8 @@ typedef struct {
     int           net_test_scroll;
 
     int              sys_settings_cursor;
+    int              sys_settings_scroll;
     SysSettingsFile *sys_settings_file;
-
-    ReleaseInfo   release_info;
-    int           release_scroll;
 } UIState;
 
 bool uiInit(UIState *ui);

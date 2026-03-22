@@ -542,20 +542,57 @@ static void drawSysSettingsScreen(UIState *ui) {
                  44, TITLE_BAR_HEIGHT + 17, COL_WARN);
     }
 
-    int y = TITLE_BAR_HEIGHT + (show_no_file ? 50 : 16);
+    int list_top = TITLE_BAR_HEIGHT + (show_no_file ? 50 : 16);
+    int list_bottom = SCREEN_HEIGHT - HINT_BAR_HEIGHT;
     int card_h = 56;
     int card_gap = 6;
+    int cat_gap = 26; /* category header height */
+
+    /* compute total content height and per-item y offsets */
+    int item_y[SYS_SETTING_COUNT];
+    int total_h = 0;
     SettingCategory last_cat = -1;
 
     for (int i = 0; i < SYS_SETTING_COUNT; i++) {
         SysSettingDef *def = &g_sys_setting_defs[i];
-
-        /* category separator */
         if (def->category != last_cat) {
-            if (last_cat != (SettingCategory)-1)
-                y += 4;
+            if (last_cat != (SettingCategory)-1) total_h += 4;
+            total_h += cat_gap;
+            last_cat = def->category;
+        }
+        item_y[i] = total_h;
+        total_h += card_h + card_gap;
+    }
+
+    /* auto-scroll to keep cursor visible */
+    int visible_h = list_bottom - list_top - 8;
+    int cursor_top = item_y[ui->sys_settings_cursor];
+    int cursor_bot = cursor_top + card_h;
+
+    if (cursor_top < ui->sys_settings_scroll)
+        ui->sys_settings_scroll = cursor_top;
+    if (cursor_bot > ui->sys_settings_scroll + visible_h)
+        ui->sys_settings_scroll = cursor_bot - visible_h;
+
+    int max_scroll = total_h - visible_h;
+    if (max_scroll < 0) max_scroll = 0;
+    if (ui->sys_settings_scroll > max_scroll) ui->sys_settings_scroll = max_scroll;
+    if (ui->sys_settings_scroll < 0) ui->sys_settings_scroll = 0;
+
+    /* clip rendering to list area */
+    SDL_Rect clip = { 0, list_top, SCREEN_WIDTH, list_bottom - list_top };
+    SDL_RenderSetClipRect(ui->renderer, &clip);
+
+    last_cat = -1;
+    int y = list_top - ui->sys_settings_scroll;
+
+    for (int i = 0; i < SYS_SETTING_COUNT; i++) {
+        SysSettingDef *def = &g_sys_setting_defs[i];
+
+        if (def->category != last_cat) {
+            if (last_cat != (SettingCategory)-1) y += 4;
             drawText(ui->renderer, ui->font_small, settingCategoryName(def->category), 36, y, COL_ACCENT);
-            y += 22;
+            y += cat_gap;
             last_cat = def->category;
         }
 
@@ -579,6 +616,8 @@ static void drawSysSettingsScreen(UIState *ui) {
         y += card_h + card_gap;
     }
 
+    SDL_RenderSetClipRect(ui->renderer, NULL);
+
     /* hint bar */
     int hy = SCREEN_HEIGHT - HINT_BAR_HEIGHT;
     fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, HINT_BAR_HEIGHT, COL_HINT_BAR_BG);
@@ -590,137 +629,6 @@ static void drawSysSettingsScreen(UIState *ui) {
     tx += textWidth(ui->font_small, "A") + 14 + 8 + textWidth(ui->font_small, "Toggle") + 36;
     drawButtonHint(ui->renderer, ui->font_small, "Y", "Save", tx, ty);
     tx += textWidth(ui->font_small, "Y") + 14 + 8 + textWidth(ui->font_small, "Save") + 36;
-    drawButtonHint(ui->renderer, ui->font_small, "X", "Release Check", tx, ty);
-    tx += textWidth(ui->font_small, "X") + 14 + 8 + textWidth(ui->font_small, "Release Check") + 36;
-    drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
-}
-
-static void drawReleaseCheckScreen(UIState *ui) {
-    ReleaseInfo *ri = &ui->release_info;
-
-    fillRect(ui->renderer, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, COL_BG);
-
-    fillRect(ui->renderer, 0, 0, SCREEN_WIDTH, TITLE_BAR_HEIGHT, COL_HEADER_BG);
-    fillRect(ui->renderer, 0, TITLE_BAR_HEIGHT - 1, SCREEN_WIDTH, 1, COL_ACCENT_DIM);
-    drawText(ui->renderer, ui->font_title, "Atmosphere Release Checker", 30, 16, COL_ACCENT);
-
-    if (ri->state == RELEASE_FETCHING) {
-        drawText(ui->renderer, ui->font_small, "Fetching latest release info...", 30, 46, COL_WARN);
-    } else if (ri->state == RELEASE_ERROR) {
-        drawText(ui->renderer, ui->font_small, ri->error_msg, 30, 46, (SDL_Color){230, 55, 55, 255});
-    }
-
-    int y = TITLE_BAR_HEIGHT + 16;
-    int card_x = 30;
-    int card_w = (SCREEN_WIDTH - 80) / 2;
-
-    /* left card: current system */
-    int left_h = 120;
-    drawRoundedRect(ui->renderer, card_x, y, card_w, left_h, 8, COL_PROFILE_BG);
-    drawRoundedRect(ui->renderer, card_x, y, 4, left_h, 2, COL_ACCENT);
-    drawText(ui->renderer, ui->font_normal, "Current System", card_x + 20, y + 14, COL_ACCENT);
-
-    char fw_str[64];
-    snprintf(fw_str, sizeof(fw_str), "Firmware:     %d.%d.%d", ri->fw_major, ri->fw_minor, ri->fw_micro);
-    drawText(ui->renderer, ui->font_normal, fw_str, card_x + 20, y + 48, COL_TEXT);
-
-    char ams_str[64];
-    if (ri->ams_detected)
-        snprintf(ams_str, sizeof(ams_str), "Atmosphere:   %d.%d.%d", ri->ams_major, ri->ams_minor, ri->ams_micro);
-    else
-        snprintf(ams_str, sizeof(ams_str), "Atmosphere:   Not detected");
-    drawText(ui->renderer, ui->font_normal, ams_str, card_x + 20, y + 78, COL_TEXT);
-
-    /* right card: latest release */
-    int right_x = card_x + card_w + 20;
-    int right_h = 120;
-    drawRoundedRect(ui->renderer, right_x, y, card_w, right_h, 8, COL_PROFILE_BG);
-
-    SDL_Color accent = ri->update_available ? COL_WARN : COL_BLOCKED;
-    drawRoundedRect(ui->renderer, right_x, y, 4, right_h, 2, accent);
-    drawText(ui->renderer, ui->font_normal, "Latest Release", right_x + 20, y + 14, accent);
-
-    if (ri->state == RELEASE_SUCCESS) {
-        char ver_str[64];
-        snprintf(ver_str, sizeof(ver_str), "Version:      %s", ri->tag_name);
-        drawText(ui->renderer, ui->font_normal, ver_str, right_x + 20, y + 48, COL_TEXT);
-
-        char pub_str[64];
-        if (ri->supported_fw[0])
-            snprintf(pub_str, sizeof(pub_str), "Supports FW:  %s", ri->supported_fw);
-        else
-            snprintf(pub_str, sizeof(pub_str), "Published:    %s", ri->published_date);
-        drawText(ui->renderer, ui->font_normal, pub_str, right_x + 20, y + 78, COL_TEXT);
-    } else if (ri->state == RELEASE_FETCHING) {
-        drawText(ui->renderer, ui->font_normal, "Loading...", right_x + 20, y + 48, COL_TEXT_DIM);
-    } else if (ri->state == RELEASE_ERROR) {
-        drawText(ui->renderer, ui->font_normal, "Fetch failed", right_x + 20, y + 48, COL_TEXT_DIM);
-    } else {
-        drawText(ui->renderer, ui->font_normal, "Press A to check", right_x + 20, y + 48, COL_TEXT_DIM);
-    }
-
-    /* update status banner */
-    y += left_h + 16;
-    if (ri->state == RELEASE_SUCCESS) {
-        int banner_h = 40;
-        if (ri->update_available) {
-            drawRoundedRect(ui->renderer, card_x, y, SCREEN_WIDTH - 60, banner_h, 8, (SDL_Color){60, 50, 20, 255});
-            drawRoundedRect(ui->renderer, card_x, y, 4, banner_h, 2, COL_WARN);
-            char msg[128];
-            snprintf(msg, sizeof(msg), "New Atmosphere %s available! (you have %d.%d.%d)",
-                     ri->tag_name, ri->ams_major, ri->ams_minor, ri->ams_micro);
-            drawText(ui->renderer, ui->font_normal, msg, card_x + 20, y + 9, COL_WARN);
-        } else {
-            drawRoundedRect(ui->renderer, card_x, y, SCREEN_WIDTH - 60, banner_h, 8, (SDL_Color){20, 50, 30, 255});
-            drawRoundedRect(ui->renderer, card_x, y, 4, banner_h, 2, COL_BLOCKED);
-            drawText(ui->renderer, ui->font_normal, "You are up to date!", card_x + 20, y + 9, COL_BLOCKED);
-        }
-        y += banner_h + 16;
-    }
-
-    /* release notes */
-    if (ri->state == RELEASE_SUCCESS && ri->body[0]) {
-        drawText(ui->renderer, ui->font_normal, "Release Notes", card_x, y, COL_ACCENT);
-        y += 28;
-
-        int notes_bottom = SCREEN_HEIGHT - HINT_BAR_HEIGHT - 8;
-        int line_h = 20;
-        int max_lines = (notes_bottom - y) / line_h;
-
-        /* split body into lines for rendering */
-        char body_copy[RELEASE_BODY_MAX];
-        strncpy(body_copy, ri->body, RELEASE_BODY_MAX - 1);
-        body_copy[RELEASE_BODY_MAX - 1] = '\0';
-
-        char *lines[256];
-        int line_count = 0;
-        char *tok = strtok(body_copy, "\n");
-        while (tok && line_count < 256) {
-            lines[line_count++] = tok;
-            tok = strtok(NULL, "\n");
-        }
-
-        /* clamp scroll */
-        int max_scroll = line_count - max_lines;
-        if (max_scroll < 0) max_scroll = 0;
-        if (ui->release_scroll > max_scroll) ui->release_scroll = max_scroll;
-        if (ui->release_scroll < 0) ui->release_scroll = 0;
-
-        for (int i = ui->release_scroll; i < line_count && (i - ui->release_scroll) < max_lines; i++) {
-            drawText(ui->renderer, ui->font_small, lines[i], card_x + 8,
-                     y + (i - ui->release_scroll) * line_h, COL_TEXT_DIM);
-        }
-    }
-
-    /* hint bar */
-    int hy = SCREEN_HEIGHT - HINT_BAR_HEIGHT;
-    fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, HINT_BAR_HEIGHT, COL_HINT_BAR_BG);
-    fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, 1, COL_SEPARATOR);
-    int ty = hy + (HINT_BAR_HEIGHT - 20) / 2 + 1;
-
-    int tx = 30;
-    drawButtonHint(ui->renderer, ui->font_small, "A", "Refresh", tx, ty);
-    tx += textWidth(ui->font_small, "A") + 14 + 8 + textWidth(ui->font_small, "Refresh") + 36;
     drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
 }
 
@@ -810,9 +718,6 @@ void uiRender(UIState *ui, HostsFile *hf) {
         break;
     case SCREEN_SYS_SETTINGS:
         drawSysSettingsScreen(ui);
-        break;
-    case SCREEN_RELEASE_CHECK:
-        drawReleaseCheckScreen(ui);
         break;
     }
 
