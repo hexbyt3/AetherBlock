@@ -90,12 +90,36 @@
 
 Or grab the full CFW package from [CFW4SysBots](https://github.com/hexbyt3/CFW4SysBots) which includes AetherBlock, Daybreak, and everything else you need.
 
+## Updating Your Switch
+
+You can update both CFW and firmware in one session with a single reboot at the end.
+
+### Step 1: Update CFW Package
+1. Open AetherBlock from the Homebrew Menu
+2. Press **ZR** to open the CFW Package Updater
+3. Press **A** to check for updates, then **A** again to download and install
+4. **Don't reboot yet** — the new files are on your SD card and will take effect on the next boot
+
+### Step 2: Update Nintendo Firmware (if needed)
+1. Press **B** to go back, then press **ZL** to open the Firmware Manager
+2. Press **A** to fetch the firmware list
+3. Select the firmware version you want and press **A** to download
+4. When extraction finishes, press **A** to launch Daybreak
+5. Daybreak opens with the firmware ready — confirm the install
+6. **Reboot once** — the new Atmosphere and new firmware both take effect
+
+### Why CFW First?
+
+Atmosphere must be updated before the reboot that loads the new firmware. New Atmosphere releases add support for new Nintendo firmware versions. If only the firmware is updated and the old Atmosphere is still on the SD card when the Switch reboots, it won't be able to boot into CFW.
+
+Extracting the CFW package just places files on the SD card — it doesn't affect the currently running system. The old Atmosphere keeps running in memory while you do everything. The new files only matter at boot, which is why you can do both steps back to back and reboot once at the end.
+
 ## Building
 
 Requires [devkitPro](https://devkitpro.org/) with the following packages:
 
 ```bash
-(dkp-)pacman -S switch-dev switch-sdl2 switch-sdl2_ttf switch-freetype switch-curl switch-mbedtls switch-zlib switch-minizip
+(dkp-)pacman -S switch-dev switch-sdl2 switch-sdl2_ttf switch-freetype switch-curl switch-mbedtls switch-zlib
 make
 ```
 
