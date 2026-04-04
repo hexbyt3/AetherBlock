@@ -11,6 +11,10 @@
 #include "ui.h"
 #include "net_test.h"
 #include "sys_settings.h"
+#include "download.h"
+#include "cfw_detect.h"
+#include "firmware_mgr.h"
+#include "cfw_mgr.h"
 
 static HostsFile       s_hosts;
 static UIState         s_ui;
@@ -134,6 +138,14 @@ static void handleMainList(InputState *input) {
             s_ui.current_screen = SCREEN_SYS_SETTINGS;
             break;
 
+        case INPUT_ZL:
+            s_ui.current_screen = SCREEN_FW_MANAGER;
+            break;
+
+        case INPUT_ZR:
+            s_ui.current_screen = SCREEN_CFW_MANAGER;
+            break;
+
         case INPUT_MINUS:
             profileSeedDefaults(&s_hosts);
             if (s_hosts.dirty)
@@ -193,25 +205,14 @@ static void handleStatus(InputState *input) {
 
 static void handleConfirm(InputState *input) {
     for (int i = 0; i < input->count; i++) {
-        switch (input->events[i]) {
-        case INPUT_A:
-            s_hosts.dirty = false;
-            return;
-
-        case INPUT_B:
+        if (input->events[i] == INPUT_B)
             s_ui.current_screen = SCREEN_MAIN_LIST;
-            break;
-
-        default:
-            break;
-        }
     }
 }
 
 static void handleNetTest(InputState *input) {
-    if (s_ui.net_test.running) {
+    if (s_ui.net_test.running)
         netTestStep(&s_ui.net_test);
-    }
 
     int row_h = 34;
     int max_visible = (LIST_BOTTOM_Y - TITLE_BAR_HEIGHT - 16) / row_h;
@@ -294,16 +295,92 @@ static void handleSysSettings(InputState *input) {
     }
 }
 
+static void handleFwManager(InputState *input) {
+    FirmwareManager *fm = &s_ui.fw_mgr;
+
+    if (fm->worker_active)
+        return;
+
+    for (int i = 0; i < input->count; i++) {
+        switch (input->events[i]) {
+        case INPUT_A:
+            if (fm->state == FW_STATE_IDLE) {
+                fwMgrStartFetch(fm);
+            } else if (fm->state == FW_STATE_READY) {
+                fwMgrStartDownload(fm);
+            } else if (fm->state == FW_STATE_DONE) {
+                if (fwMgrLaunchDaybreak() == 0) {
+                    romfsExit();
+                    s_hosts.dirty = false;
+                    return;
+                } else {
+                    uiShowToast(&s_ui, "Daybreak not found at /switch/daybreak.nro", TOAST_ERROR);
+                }
+            } else if (fm->state == FW_STATE_ERROR) {
+                fm->state = FW_STATE_IDLE;
+            }
+            break;
+
+        case INPUT_UP:
+            if (fm->state == FW_STATE_READY && fm->selected > 0)
+                fm->selected--;
+            break;
+
+        case INPUT_DOWN:
+            if (fm->state == FW_STATE_READY && fm->selected < fm->count - 1)
+                fm->selected++;
+            break;
+
+        case INPUT_B:
+            if (fm->state == FW_STATE_ERROR)
+                fm->state = FW_STATE_IDLE;
+            s_ui.current_screen = SCREEN_MAIN_LIST;
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
+static void handleCfwManager(InputState *input) {
+    CfwPackageManager *cm = &s_ui.cfw_mgr;
+
+    if (cm->worker_active)
+        return;
+
+    for (int i = 0; i < input->count; i++) {
+        switch (input->events[i]) {
+        case INPUT_A:
+            if (cm->state == CFW_STATE_IDLE) {
+                cfwMgrStartFetch(cm);
+            } else if (cm->state == CFW_STATE_READY) {
+                cfwMgrStartDownload(cm);
+            } else if (cm->state == CFW_STATE_DONE) {
+                cfwMgrReboot(cm->is_mariko);
+            } else if (cm->state == CFW_STATE_ERROR) {
+                cm->state = CFW_STATE_IDLE;
+            }
+            break;
+
+        case INPUT_B:
+            if (cm->state == CFW_STATE_ERROR)
+                cm->state = CFW_STATE_IDLE;
+            s_ui.current_screen = SCREEN_MAIN_LIST;
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
 static bool shouldQuit(InputState *input) {
     for (int i = 0; i < input->count; i++) {
         if (input->events[i] == INPUT_PLUS && s_ui.current_screen == SCREEN_MAIN_LIST && !s_hosts.dirty)
             return true;
-    }
-    if (s_ui.current_screen == SCREEN_CONFIRM) {
-        for (int i = 0; i < input->count; i++) {
-            if (input->events[i] == INPUT_A)
-                return true;
-        }
+        if (input->events[i] == INPUT_A && s_ui.current_screen == SCREEN_CONFIRM)
+            return true;
     }
     return false;
 }
@@ -316,12 +393,15 @@ int main(int argc, char *argv[]) {
     plInitialize(PlServiceType_User);
     socketInitializeDefault();
 
+    downloadGlobalInit();
+
     hostsLoad(&s_hosts);
 
     sysSettingsLoad(&s_sys_settings);
     sysSettingsReadStates(&s_sys_settings);
 
     if (!uiInit(&s_ui)) {
+        downloadGlobalCleanup();
         plExit();
         romfsExit();
         socketExit();
@@ -329,6 +409,13 @@ int main(int argc, char *argv[]) {
     }
 
     s_ui.sys_settings_file = &s_sys_settings;
+
+    CfwInfo cfw;
+    detectCfwInfo(&cfw);
+    snprintf(s_ui.current_fw_version, sizeof(s_ui.current_fw_version), "%s", cfw.fw_version);
+
+    fwMgrInit(&s_ui.fw_mgr);
+    cfwMgrInit(&s_ui.cfw_mgr);
 
     inputInit();
 
@@ -358,14 +445,19 @@ int main(int argc, char *argv[]) {
         case SCREEN_SYS_SETTINGS:
             handleSysSettings(&input);
             break;
-        }
-
-        if (shouldQuit(&input))
+        case SCREEN_FW_MANAGER:
+            handleFwManager(&input);
             break;
+        case SCREEN_CFW_MANAGER:
+            handleCfwManager(&input);
+            break;
+        }
 
         uiRender(&s_ui, &s_hosts);
     }
+
     uiDestroy(&s_ui);
+    downloadGlobalCleanup();
     socketExit();
     plExit();
     romfsExit();

@@ -20,6 +20,8 @@ static ButtonMap s_buttons[] = {
     { HidNpadButton_Minus,                               INPUT_MINUS, 0, false },
     { HidNpadButton_L,                                   INPUT_L,     0, false },
     { HidNpadButton_R,                                   INPUT_R,     0, false },
+    { HidNpadButton_ZL,                                  INPUT_ZL,    0, false },
+    { HidNpadButton_ZR,                                  INPUT_ZR,    0, false },
 };
 
 #define BUTTON_COUNT (sizeof(s_buttons) / sizeof(s_buttons[0]))

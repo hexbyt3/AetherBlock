@@ -9,6 +9,8 @@
 #include "profiles.h"
 #include "net_test.h"
 #include "sys_settings.h"
+#include "firmware_mgr.h"
+#include "cfw_mgr.h"
 
 typedef enum {
     SCREEN_MAIN_LIST = 0,
@@ -17,6 +19,8 @@ typedef enum {
     SCREEN_STATUS,
     SCREEN_NET_TEST,
     SCREEN_SYS_SETTINGS,
+    SCREEN_FW_MANAGER,
+    SCREEN_CFW_MANAGER,
 } AppScreen;
 
 typedef struct {
@@ -44,6 +48,10 @@ typedef struct {
     int              sys_settings_cursor;
     int              sys_settings_scroll;
     SysSettingsFile *sys_settings_file;
+
+    FirmwareManager    fw_mgr;
+    CfwPackageManager  cfw_mgr;
+    char               current_fw_version[32];
 } UIState;
 
 bool uiInit(UIState *ui);

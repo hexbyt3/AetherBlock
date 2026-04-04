@@ -5,8 +5,8 @@
 <h1 align="center">AetherBlock</h1>
 
 <p align="center">
-  A Nintendo Switch homebrew app for managing Atmosphere's DNS MITM hosts file.<br>
-  Toggle Nintendo server blocks on/off with a full-screen UI, no reboot required.
+  A Nintendo Switch homebrew app for CFW management.<br>
+  DNS blocking, firmware downloads, Atmosphere updates -- all without leaving your Switch.
 </p>
 
 <p align="center">
@@ -48,9 +48,22 @@
 ### Atmosphere Settings Manager
 - Toggle verified `system_settings.ini` overrides from a UI (reboot required to apply)
 - All settings sourced from Atmosphere's `settings_sd_kvs.cpp` -- nothing unverified
-- Categories: Network (DNS MITM controls), Telemetry (error uploads), Homebrew (cheats, debug mode, bluetooth DB)
+- Categories: Update Suppression, Network, Telemetry, Homebrew
 - Preserves existing comments and manual edits in your INI file
 - Safe for sysnand online play -- all overrides are local only
+
+### Firmware Manager
+- Download Nintendo firmware (HOS) directly from the Switch
+- Browse available firmware versions and select the one you need
+- Downloads and extracts firmware, then hands off to Daybreak for installation
+- No PC required -- download, extract, and install all from the homebrew menu
+
+### CFW Package Updater
+- Downloads the latest [CFW4SysBots](https://github.com/hexbyt3/CFW4SysBots) package directly from GitHub
+- Includes everything: Atmosphere, Hekate, sys-botbase, ldn_mitm, AetherBlock, and more
+- Auto-detects your console type (Mariko/Erista) and downloads the right package
+- Preserves your DNS hosts, system settings, sysmodules, and configs during update
+- Mod-chipped users just reboot -- no jig, no RCM, no payload injection
 
 ## Controls
 
@@ -58,28 +71,31 @@
 |--------|--------|
 | Up/Down | Navigate entries |
 | Left/Right | Page up/down |
-| A | Toggle selected entry |
+| A | Toggle / Select / Confirm |
 | X | Open profiles menu |
 | Y | Save & reload DNS |
 | L | Run server connectivity test |
 | R | Atmosphere settings |
+| ZL | Firmware Manager |
+| ZR | CFW Package Updater |
 | - | Seed default Nintendo entries |
 | + | Quit (with unsaved changes check) |
 
-**Settings Screen:** A Toggle | Y Save | B Back
-
 ## Installation
 
-1. Download `AetherBlock.nro` from the [latest release](https://github.com/hexbyt3/AetherBlock/releases/latest)
-2. Copy to `/switch/AetherBlock/AetherBlock.nro` on your SD card
-3. Launch from the Homebrew Menu
+1. Download `AetherBlock.zip` from the [latest release](https://github.com/hexbyt3/AetherBlock/releases/latest)
+2. Extract to the root of your SD card (places the NRO in `/switch/AetherBlock/`)
+3. Make sure Daybreak is at `/switch/daybreak.nro` for firmware installation
+4. Launch from the Homebrew Menu
+
+Or grab the full CFW package from [CFW4SysBots](https://github.com/hexbyt3/CFW4SysBots) which includes AetherBlock, Daybreak, and everything else you need.
 
 ## Building
 
 Requires [devkitPro](https://devkitpro.org/) with the following packages:
 
 ```bash
-(dkp-)pacman -S switch-dev switch-sdl2 switch-sdl2_ttf switch-freetype
+(dkp-)pacman -S switch-dev switch-sdl2 switch-sdl2_ttf switch-freetype switch-curl switch-mbedtls switch-zlib switch-minizip
 make
 ```
 
@@ -89,12 +105,17 @@ make
 
 **System Settings:** Reads and modifies `/atmosphere/config/system_settings.ini`. Atmosphere parses this file at boot and overrides the corresponding system settings via its set:sys mitm service. Changes here require a reboot to take effect.
 
+**Firmware Manager:** Fetches a firmware manifest from the CFW4SysBots repo, downloads the selected firmware ZIP, extracts it to `/firmware/`, then chain-loads Daybreak with the firmware path pre-set. Daybreak handles the actual firmware flash.
+
+**CFW Package Updater:** Hits the GitHub API for the latest CFW4SysBots release, auto-selects the right package for your console (mod-chipped or unpatched), and downloads/extracts the full CFW bundle. Your hosts files, system settings, sysmodules, and AetherBlock config are preserved during extraction.
+
 ## Credits
 
 - DNS reload mechanism via [DNS-MITM_Manager](https://github.com/znxDomain/DNS-MITM_Manager) by znxDomain
 - Server list from [NintendoClients Wiki](https://github.com/kinnay/NintendoClients/wiki/Server-List)
+- Download/extraction patterns adapted from [AIO-Switch-Updater](https://github.com/HamletDuFromage/aio-switch-updater)
 - Settings verified against [Atmosphere](https://github.com/Atmosphere-NX/Atmosphere) source (`settings_sd_kvs.cpp`)
-- Built with [libnx](https://github.com/switchbrew/libnx) and [SDL2](https://www.libsdl.org/)
+- Built with [libnx](https://github.com/switchbrew/libnx), [SDL2](https://www.libsdl.org/), [cJSON](https://github.com/DaveGamble/cJSON), and [libcurl](https://curl.se/libcurl/)
 
 ## License
 

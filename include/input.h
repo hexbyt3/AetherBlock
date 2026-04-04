@@ -19,6 +19,8 @@ typedef enum {
     INPUT_MINUS,
     INPUT_L,
     INPUT_R,
+    INPUT_ZL,
+    INPUT_ZR,
 } InputEvent;
 
 #define INPUT_MAX_EVENTS 16

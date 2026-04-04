@@ -11,14 +11,14 @@ include $(DEVKITPRO)/libnx/switch_rules
 #---------------------------------------------------------------------------------
 TARGET		:=	AetherBlock
 BUILD		:=	build
-SOURCES		:=	source
+SOURCES		:=	source lib
 DATA		:=	data
-INCLUDES	:=	include
+INCLUDES	:=	include lib
 ROMFS		:=	romfs
 
 APP_TITLE	:=	AetherBlock
 APP_AUTHOR	:=	HeXbyt3
-APP_VERSION	:=	1.0.1
+APP_VERSION	:=	2.0.0
 
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
@@ -33,7 +33,8 @@ CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS		:=	-g $(ARCH)
 LDFLAGS		=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:=	$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --libs SDL2_ttf) -lnx
+LIBS	:=	$(shell $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config --libs SDL2_ttf) \
+			-lcurl -lminizip -lz -lmbedtls -lmbedx509 -lmbedcrypto -lnx
 
 #---------------------------------------------------------------------------------
 LIBDIRS	:=	$(PORTLIBS) $(LIBNX)

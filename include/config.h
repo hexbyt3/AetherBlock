@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #define APP_NAME            "AetherBlock"
-#define APP_VERSION         "1.0.1"
+#define APP_VERSION         "2.0.0"
 #define APP_AUTHOR          "HeXbyt3"
 
 #define HOSTS_MAX_ENTRIES   256
@@ -28,5 +28,16 @@
 
 #define STATUS_MSG_FRAMES   180
 #define TOAST_FRAMES        120
+
+/* download / update paths */
+#define FIRMWARE_MANIFEST_URL  "https://raw.githubusercontent.com/hexbyt3/CFW4SysBots/main/manifests/firmware.json"
+#define FIRMWARE_DOWNLOAD_PATH "/config/AetherBlock/firmware.zip"
+#define FIRMWARE_EXTRACT_PATH  "/firmware/"
+#define CFW_DOWNLOAD_PATH      "/config/AetherBlock/cfw_package.zip"
+#define CFW_API_URL            "https://api.github.com/repos/hexbyt3/CFW4SysBots/releases/latest"
+#define CFW_ASSET_MARIKO       "mod-chipped"
+#define CFW_ASSET_ERISTA       "unpatched"
+#define DAYBREAK_PATH          "/switch/daybreak.nro"
+#define AETHERBLOCK_CONFIG_DIR "/config/AetherBlock/"
 
 #endif

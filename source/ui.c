@@ -206,11 +206,12 @@ static void drawHintBar(UIState *ui) {
     typedef struct { const char *btn; const char *label; } HintDef;
     HintDef hints[] = {
         {"A",               "Toggle"},
-        {"Y",               "Save & Reload"},
+        {"Y",               "Save"},
         {"X",               "Profiles"},
         {"L",               "Test Servers"},
         {"R",               "Settings"},
-        {"\xe2\x88\x92",    "Seed Defaults"},
+        {"ZL",              "Firmware"},
+        {"ZR",              "CFW Update"},
         {"+",               "Quit"},
     };
     int count = sizeof(hints) / sizeof(hints[0]);
@@ -548,7 +549,6 @@ static void drawSysSettingsScreen(UIState *ui) {
     int card_gap = 6;
     int cat_gap = 26; /* category header height */
 
-    /* compute total content height and per-item y offsets */
     int item_y[SYS_SETTING_COUNT];
     int total_h = 0;
     SettingCategory last_cat = -1;
@@ -564,7 +564,6 @@ static void drawSysSettingsScreen(UIState *ui) {
         total_h += card_h + card_gap;
     }
 
-    /* auto-scroll to keep cursor visible */
     int visible_h = list_bottom - list_top - 8;
     int cursor_top = item_y[ui->sys_settings_cursor];
     int cursor_bot = cursor_top + card_h;
@@ -579,7 +578,6 @@ static void drawSysSettingsScreen(UIState *ui) {
     if (ui->sys_settings_scroll > max_scroll) ui->sys_settings_scroll = max_scroll;
     if (ui->sys_settings_scroll < 0) ui->sys_settings_scroll = 0;
 
-    /* clip rendering to list area */
     SDL_Rect clip = { 0, list_top, SCREEN_WIDTH, list_bottom - list_top };
     SDL_RenderSetClipRect(ui->renderer, &clip);
 
@@ -618,7 +616,6 @@ static void drawSysSettingsScreen(UIState *ui) {
 
     SDL_RenderSetClipRect(ui->renderer, NULL);
 
-    /* hint bar */
     int hy = SCREEN_HEIGHT - HINT_BAR_HEIGHT;
     fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, HINT_BAR_HEIGHT, COL_HINT_BAR_BG);
     fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, 1, COL_SEPARATOR);
@@ -629,6 +626,212 @@ static void drawSysSettingsScreen(UIState *ui) {
     tx += textWidth(ui->font_small, "A") + 14 + 8 + textWidth(ui->font_small, "Toggle") + 36;
     drawButtonHint(ui->renderer, ui->font_small, "Y", "Save", tx, ty);
     tx += textWidth(ui->font_small, "Y") + 14 + 8 + textWidth(ui->font_small, "Save") + 36;
+    drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
+}
+
+static void drawProgressBar(SDL_Renderer *r, int x, int y, int w, int h, float progress) {
+    drawRoundedRect(r, x, y, w, h, h / 2, COL_SEPARATOR);
+    if (progress < 0.0f) progress = 0.0f;
+    if (progress > 1.0f) progress = 1.0f;
+    int fill = (int)(w * progress);
+    if (fill > 0)
+        drawRoundedRect(r, x, y, fill, h, h / 2, COL_ACCENT);
+}
+
+static void drawFwManagerScreen(UIState *ui) {
+    FirmwareManager *fm = &ui->fw_mgr;
+
+    fillRect(ui->renderer, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, COL_BG);
+    fillRect(ui->renderer, 0, 0, SCREEN_WIDTH, TITLE_BAR_HEIGHT, COL_HEADER_BG);
+    fillRect(ui->renderer, 0, TITLE_BAR_HEIGHT - 1, SCREEN_WIDTH, 1, COL_ACCENT_DIM);
+    drawText(ui->renderer, ui->font_title, "Firmware Manager", 30, 16, COL_ACCENT);
+
+    char fw_info[128];
+    snprintf(fw_info, sizeof(fw_info), "Current HOS: %s", ui->current_fw_version);
+    drawText(ui->renderer, ui->font_small, fw_info, 30, 46, COL_TEXT_DIM);
+
+    if (fm->state == FW_STATE_DOWNLOADING || fm->state == FW_STATE_EXTRACTING) {
+        int cy = SCREEN_HEIGHT / 2 - 60;
+        drawText(ui->renderer, ui->font_normal, fm->status_text,
+                 (SCREEN_WIDTH - textWidth(ui->font_normal, fm->status_text)) / 2, cy, COL_TEXT);
+        drawProgressBar(ui->renderer, 100, cy + 50, SCREEN_WIDTH - 200, 16, fm->progress);
+
+        char pct[16];
+        snprintf(pct, sizeof(pct), "%d%%", (int)(fm->progress * 100));
+        drawText(ui->renderer, ui->font_normal, pct,
+                 (SCREEN_WIDTH - textWidth(ui->font_normal, pct)) / 2, cy + 80, COL_TEXT);
+    } else if (fm->state == FW_STATE_ERROR) {
+        int cy = SCREEN_HEIGHT / 2 - 20;
+        int ew = textWidth(ui->font_normal, fm->error_text);
+        drawText(ui->renderer, ui->font_normal, fm->error_text,
+                 (SCREEN_WIDTH - ew) / 2, cy, COL_ALLOWED);
+    } else if (fm->state == FW_STATE_DONE) {
+        int cy = SCREEN_HEIGHT / 2 - 40;
+        int sw = textWidth(ui->font_normal, fm->status_text);
+        drawText(ui->renderer, ui->font_normal, fm->status_text,
+                 (SCREEN_WIDTH - sw) / 2, cy, COL_BLOCKED);
+
+        const char *prompt = "Press A to launch Daybreak";
+        int pw = textWidth(ui->font_normal, prompt);
+        drawText(ui->renderer, ui->font_normal, prompt,
+                 (SCREEN_WIDTH - pw) / 2, cy + 40, COL_ACCENT);
+    } else if (fm->state == FW_STATE_FETCHING) {
+        int cy = SCREEN_HEIGHT / 2 - 10;
+        int sw = textWidth(ui->font_normal, fm->status_text);
+        drawText(ui->renderer, ui->font_normal, fm->status_text,
+                 (SCREEN_WIDTH - sw) / 2, cy, COL_TEXT_DIM);
+    } else if (fm->state == FW_STATE_READY && fm->count > 0) {
+        int y = TITLE_BAR_HEIGHT + 16;
+        int card_h = 44;
+        int card_gap = 6;
+        int visible_h = LIST_BOTTOM_Y - y - 8;
+        int max_visible = visible_h / (card_h + card_gap);
+
+        int scroll = 0;
+        if (fm->selected >= max_visible)
+            scroll = fm->selected - max_visible + 1;
+
+        for (int i = scroll; i < fm->count && (i - scroll) < max_visible; i++) {
+            int ry = y + (i - scroll) * (card_h + card_gap);
+            bool selected = (i == fm->selected);
+            SDL_Color bg = selected ? COL_CURSOR_BG : COL_PROFILE_BG;
+
+            drawRoundedRect(ui->renderer, 30, ry, SCREEN_WIDTH - 60, card_h, 8, bg);
+            if (selected)
+                drawRoundedRect(ui->renderer, 30, ry, 4, card_h, 2, COL_ACCENT);
+
+            drawText(ui->renderer, ui->font_normal, fm->entries[i].version,
+                     60, ry + (card_h - 22) / 2, COL_TEXT);
+        }
+    } else if (fm->state == FW_STATE_IDLE) {
+        int cy = SCREEN_HEIGHT / 2 - 10;
+        const char *msg = "Press A to fetch firmware list";
+        int mw = textWidth(ui->font_normal, msg);
+        drawText(ui->renderer, ui->font_normal, msg,
+                 (SCREEN_WIDTH - mw) / 2, cy, COL_TEXT_DIM);
+    }
+
+    int hy = SCREEN_HEIGHT - HINT_BAR_HEIGHT;
+    fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, HINT_BAR_HEIGHT, COL_HINT_BAR_BG);
+    fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, 1, COL_SEPARATOR);
+    int ty = hy + (HINT_BAR_HEIGHT - 20) / 2 + 1;
+
+    int tx = 30;
+    if (fm->state == FW_STATE_READY || fm->state == FW_STATE_IDLE || fm->state == FW_STATE_DONE) {
+        drawButtonHint(ui->renderer, ui->font_small, "A",
+                       fm->state == FW_STATE_DONE ? "Launch Daybreak" :
+                       fm->state == FW_STATE_IDLE ? "Fetch List" : "Download",
+                       tx, ty);
+        tx += 180;
+    }
+    drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
+}
+
+static void drawCfwManagerScreen(UIState *ui) {
+    CfwPackageManager *cm = &ui->cfw_mgr;
+
+    fillRect(ui->renderer, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, COL_BG);
+    fillRect(ui->renderer, 0, 0, SCREEN_WIDTH, TITLE_BAR_HEIGHT, COL_HEADER_BG);
+    fillRect(ui->renderer, 0, TITLE_BAR_HEIGHT - 1, SCREEN_WIDTH, 1, COL_ACCENT_DIM);
+    drawText(ui->renderer, ui->font_title, "CFW Package Updater", 30, 16, COL_ACCENT);
+
+    char sub[128];
+    snprintf(sub, sizeof(sub), "Console: %s", cm->is_mariko ? "Mariko (Mod Chipped)" : "Erista (Unpatched)");
+    drawText(ui->renderer, ui->font_small, sub, 30, 46, COL_TEXT_DIM);
+
+    if (cm->state == CFW_STATE_DOWNLOADING || cm->state == CFW_STATE_EXTRACTING) {
+        int cy = SCREEN_HEIGHT / 2 - 60;
+        drawText(ui->renderer, ui->font_normal, cm->status_text,
+                 (SCREEN_WIDTH - textWidth(ui->font_normal, cm->status_text)) / 2, cy, COL_TEXT);
+        drawProgressBar(ui->renderer, 100, cy + 50, SCREEN_WIDTH - 200, 16, cm->progress);
+
+        char pct[16];
+        snprintf(pct, sizeof(pct), "%d%%", (int)(cm->progress * 100));
+        drawText(ui->renderer, ui->font_normal, pct,
+                 (SCREEN_WIDTH - textWidth(ui->font_normal, pct)) / 2, cy + 80, COL_TEXT);
+    } else if (cm->state == CFW_STATE_ERROR) {
+        int cy = SCREEN_HEIGHT / 2 - 20;
+        int ew = textWidth(ui->font_normal, cm->error_text);
+        drawText(ui->renderer, ui->font_normal, cm->error_text,
+                 (SCREEN_WIDTH - ew) / 2, cy, COL_ALLOWED);
+    } else if (cm->state == CFW_STATE_DONE) {
+        int cy = SCREEN_HEIGHT / 2 - 40;
+        int sw = textWidth(ui->font_normal, cm->status_text);
+        drawText(ui->renderer, ui->font_normal, cm->status_text,
+                 (SCREEN_WIDTH - sw) / 2, cy, COL_BLOCKED);
+
+        const char *prompt = "Press A to reboot";
+        int pw = textWidth(ui->font_normal, prompt);
+        drawText(ui->renderer, ui->font_normal, prompt,
+                 (SCREEN_WIDTH - pw) / 2, cy + 40, COL_ACCENT);
+    } else if (cm->state == CFW_STATE_FETCHING) {
+        int cy = SCREEN_HEIGHT / 2 - 10;
+        int sw = textWidth(ui->font_normal, cm->status_text);
+        drawText(ui->renderer, ui->font_normal, cm->status_text,
+                 (SCREEN_WIDTH - sw) / 2, cy, COL_TEXT_DIM);
+    } else if (cm->state == CFW_STATE_READY) {
+        int y = TITLE_BAR_HEIGHT + 20;
+
+        char info_line[128];
+        snprintf(info_line, sizeof(info_line), "Current AMS: %s     Package: %s",
+                 cm->current_ams, cm->latest_tag);
+        drawText(ui->renderer, ui->font_large, info_line, 60, y, COL_TEXT);
+        y += 50;
+
+        int card_x = 40, card_w = SCREEN_WIDTH - 80, card_h = 300;
+        drawRoundedRect(ui->renderer, card_x, y, card_w, card_h, 10, COL_PROFILE_BG);
+        drawRoundedRect(ui->renderer, card_x, y, 4, card_h, 2, COL_BLOCKED);
+
+        char title[128];
+        snprintf(title, sizeof(title), "CFW4SysBots %s (%s)",
+                 cm->latest_tag, cm->is_mariko ? "Mod Chipped" : "Unpatched");
+        drawText(ui->renderer, ui->font_normal, title, card_x + 20, y + 14, COL_BLOCKED);
+
+        drawText(ui->renderer, ui->font_small,
+                 "Includes: Atmosphere, Hekate, sys-botbase, ldn_mitm, AetherBlock",
+                 card_x + 20, y + 44, COL_TEXT_DIM);
+
+        if (cm->changelog[0]) {
+            SDL_Rect clip = { card_x + 20, y + 70, card_w - 40, card_h - 84 };
+            SDL_RenderSetClipRect(ui->renderer, &clip);
+
+            int cy = y + 70;
+            char *log_copy = strdup(cm->changelog);
+            if (log_copy) {
+                char *line = strtok(log_copy, "\n");
+                while (line && cy < y + card_h - 20) {
+                    drawText(ui->renderer, ui->font_small, line, card_x + 20, cy, COL_TEXT_DIM);
+                    cy += 20;
+                    line = strtok(NULL, "\n");
+                }
+                free(log_copy);
+            }
+            SDL_RenderSetClipRect(ui->renderer, NULL);
+        }
+    } else if (cm->state == CFW_STATE_IDLE) {
+        int cy = SCREEN_HEIGHT / 2 - 10;
+        const char *msg = "Press A to check for updates";
+        int mw = textWidth(ui->font_normal, msg);
+        drawText(ui->renderer, ui->font_normal, msg,
+                 (SCREEN_WIDTH - mw) / 2, cy, COL_TEXT_DIM);
+    }
+
+    int hy = SCREEN_HEIGHT - HINT_BAR_HEIGHT;
+    fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, HINT_BAR_HEIGHT, COL_HINT_BAR_BG);
+    fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, 1, COL_SEPARATOR);
+    int ty = hy + (HINT_BAR_HEIGHT - 20) / 2 + 1;
+
+    int tx = 30;
+    if (cm->state == CFW_STATE_IDLE) {
+        drawButtonHint(ui->renderer, ui->font_small, "A", "Check for Updates", tx, ty);
+        tx += 220;
+    } else if (cm->state == CFW_STATE_READY) {
+        drawButtonHint(ui->renderer, ui->font_small, "A", "Download & Install", tx, ty);
+        tx += 230;
+    } else if (cm->state == CFW_STATE_DONE) {
+        drawButtonHint(ui->renderer, ui->font_small, "A", "Reboot", tx, ty);
+        tx += 130;
+    }
     drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
 }
 
@@ -718,6 +921,12 @@ void uiRender(UIState *ui, HostsFile *hf) {
         break;
     case SCREEN_SYS_SETTINGS:
         drawSysSettingsScreen(ui);
+        break;
+    case SCREEN_FW_MANAGER:
+        drawFwManagerScreen(ui);
+        break;
+    case SCREEN_CFW_MANAGER:
+        drawCfwManagerScreen(ui);
         break;
     }
 
