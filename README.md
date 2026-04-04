@@ -33,6 +33,11 @@
 ![2026032121060000-DB1426D1DFD034027CECDE9C2DD914B8](https://github.com/user-attachments/assets/1cf5d21b-567f-40aa-a65d-410ae4acb56f)
 ![2026032121061300-DB1426D1DFD034027CECDE9C2DD914B8](https://github.com/user-attachments/assets/bd216d12-f7ee-4778-8d5b-f92bd658dc3b)
 
+NEW!  Firmware & CFW Updates
+![2026032017353700-DB1426D1DFD034027CECDE9C2DD914B8](https://github.com/user-attachments/assets/75e002d8-6b34-4622-90f9-0c736f4809d8)
+![2026032017352900-DB1426D1DFD034027CECDE9C2DD914B8](https://github.com/user-attachments/assets/9dca6861-56c5-4a5c-a01d-7c236c109e4c)
+
+
 
 
 ## Features
