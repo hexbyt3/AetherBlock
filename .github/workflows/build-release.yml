@@ -20,7 +20,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          dkp-pacman -Sy --noconfirm switch-curl switch-mbedtls switch-zlib switch-minizip
+          dkp-pacman -Sy --noconfirm switch-curl switch-mbedtls switch-zlib switch-minizip \
+            || echo "Package sync failed (devkitPro CDN issue) — checking if already installed..." \
+            && dkp-pacman -Q switch-curl switch-mbedtls switch-zlib switch-minizip
 
       - name: Build
         run: make
