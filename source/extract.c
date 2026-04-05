@@ -86,7 +86,7 @@ int extractZip(const char *zip_path, const char *dest_path,
         if (unzGetCurrentFileInfo(zf, &fi, filename, sizeof(filename),
                                   NULL, 0, NULL, 0) != UNZ_OK) {
             errors++;
-            break;
+            goto next_entry;
         }
 
         if (cb) cb(i + 1, total, filename, userdata);
@@ -131,6 +131,7 @@ int extractZip(const char *zip_path, const char *dest_path,
                     break;
                 }
             }
+            if (bytes < 0) write_ok = false;
             fclose(fp);
             unzCloseCurrentFile(zf);
 
@@ -146,7 +147,7 @@ next_entry:
 
     free(buf);
     unzClose(zf);
-    return errors ? -1 : 0;
+    return errors;
 }
 
 int removeDir(const char *path) {

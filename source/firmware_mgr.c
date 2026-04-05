@@ -90,8 +90,9 @@ static void *download_worker(void *arg) {
 
     removeDir(FIRMWARE_EXTRACT_PATH);
 
-    if (extractZip(FIRMWARE_DOWNLOAD_PATH, FIRMWARE_EXTRACT_PATH,
-                   NULL, 0, extract_cb, fm) != 0) {
+    int extract_errs = extractZip(FIRMWARE_DOWNLOAD_PATH, FIRMWARE_EXTRACT_PATH,
+                                   NULL, 0, extract_cb, fm);
+    if (extract_errs < 0) {
         fm->state = FW_STATE_ERROR;
         snprintf(fm->error_text, sizeof(fm->error_text), "Extraction failed");
         fm->worker_active = false;
@@ -102,8 +103,13 @@ static void *download_worker(void *arg) {
 
     fm->state = FW_STATE_DONE;
     fm->progress = 1.0f;
-    snprintf(fm->status_text, sizeof(fm->status_text),
-             "Firmware extracted! Ready for Daybreak.");
+    if (extract_errs > 0)
+        snprintf(fm->status_text, sizeof(fm->status_text),
+                 "Firmware extracted (%d file%s skipped). Ready for Daybreak.",
+                 extract_errs, extract_errs == 1 ? "" : "s");
+    else
+        snprintf(fm->status_text, sizeof(fm->status_text),
+                 "Firmware extracted! Ready for Daybreak.");
     fm->worker_active = false;
     return NULL;
 }
