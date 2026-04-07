@@ -57,11 +57,22 @@ static int ensure_dir(const char *dir) {
     return 0;
 }
 
+static void note_fail(char *buf, size_t buf_size, const char *name) {
+    if (!buf || buf_size == 0) return;
+    size_t cur = strlen(buf);
+    if (cur + 1 >= buf_size) return;
+    snprintf(buf + cur, buf_size - cur, "%s%s", cur ? ", " : "", name);
+}
+
 int extractZip(const char *zip_path, const char *dest_path,
                const char **preserve_prefixes, int preserve_count,
-               ExtractProgressCb cb, void *userdata) {
+               ExtractProgressCb cb, void *userdata,
+               char *failed_out, size_t failed_out_size) {
     unzFile zf = unzOpen(zip_path);
     if (!zf) return -1;
+
+    if (failed_out && failed_out_size > 0)
+        failed_out[0] = '\0';
 
     unz_global_info gi;
     if (unzGetGlobalInfo(zf, &gi) != UNZ_OK) {
@@ -113,12 +124,27 @@ int extractZip(const char *zip_path, const char *dest_path,
 
             if (unzOpenCurrentFile(zf) != UNZ_OK) {
                 errors++;
+                note_fail(failed_out, failed_out_size, filename);
                 goto next_entry;
             }
 
+            char stash_path[1100];
+            bool stashed = false;
             FILE *fp = fopen(full_path, "wb");
             if (!fp) {
+                /* probably a running sysmodule holding the file open;
+                   shove the old one aside and try again */
+                snprintf(stash_path, sizeof(stash_path), "%s.ab_old", full_path);
+                remove(stash_path);
+                if (rename(full_path, stash_path) == 0) {
+                    stashed = true;
+                    fp = fopen(full_path, "wb");
+                }
+            }
+            if (!fp) {
+                if (stashed) rename(stash_path, full_path);
                 errors++;
+                note_fail(failed_out, failed_out_size, filename);
                 unzCloseCurrentFile(zf);
                 goto next_entry;
             }
@@ -137,7 +163,11 @@ int extractZip(const char *zip_path, const char *dest_path,
 
             if (!write_ok) {
                 remove(full_path);
+                if (stashed) rename(stash_path, full_path);
                 errors++;
+                note_fail(failed_out, failed_out_size, filename);
+            } else if (stashed) {
+                remove(stash_path);
             }
         }
 

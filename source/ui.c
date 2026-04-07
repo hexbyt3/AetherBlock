@@ -760,10 +760,18 @@ static void drawCfwManagerScreen(UIState *ui) {
         drawText(ui->renderer, ui->font_normal, cm->status_text,
                  (SCREEN_WIDTH - sw) / 2, cy, COL_BLOCKED);
 
+        int prompt_y = cy + 40;
+        if (cm->failed_files[0]) {
+            int fw = textWidth(ui->font_small, cm->failed_files);
+            drawText(ui->renderer, ui->font_small, cm->failed_files,
+                     (SCREEN_WIDTH - fw) / 2, cy + 30, COL_TEXT_DIM);
+            prompt_y = cy + 60;
+        }
+
         const char *prompt = "Press A to reboot";
         int pw = textWidth(ui->font_normal, prompt);
         drawText(ui->renderer, ui->font_normal, prompt,
-                 (SCREEN_WIDTH - pw) / 2, cy + 40, COL_ACCENT);
+                 (SCREEN_WIDTH - pw) / 2, prompt_y, COL_ACCENT);
     } else if (cm->state == CFW_STATE_FETCHING) {
         int cy = SCREEN_HEIGHT / 2 - 10;
         int sw = textWidth(ui->font_normal, cm->status_text);

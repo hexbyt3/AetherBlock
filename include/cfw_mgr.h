@@ -25,6 +25,7 @@ typedef struct {
     float       progress;
     char        status_text[256];
     char        error_text[256];
+    char        failed_files[1024];
     pthread_t   worker;
     bool        worker_active;
 } CfwPackageManager;

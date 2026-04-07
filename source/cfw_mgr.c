@@ -122,9 +122,11 @@ static void *download_worker(void *arg) {
     cm->progress = 0.0f;
     snprintf(cm->status_text, sizeof(cm->status_text), "Extracting CFW package...");
 
+    cm->failed_files[0] = '\0';
     int extract_errs = extractZip(CFW_DOWNLOAD_PATH, "/",
                                    PRESERVE_PATHS, PRESERVE_COUNT,
-                                   extract_cb, cm);
+                                   extract_cb, cm,
+                                   cm->failed_files, sizeof(cm->failed_files));
     if (extract_errs < 0) {
         cm->state = CFW_STATE_ERROR;
         snprintf(cm->error_text, sizeof(cm->error_text), "Extraction failed");
@@ -138,7 +140,7 @@ static void *download_worker(void *arg) {
     cm->progress = 1.0f;
     if (extract_errs > 0)
         snprintf(cm->status_text, sizeof(cm->status_text),
-                 "CFW package %s installed (%d file%s skipped). Reboot to apply.",
+                 "CFW %s installed, %d file%s failed. Reboot to apply.",
                  cm->latest_tag, extract_errs, extract_errs == 1 ? "" : "s");
     else
         snprintf(cm->status_text, sizeof(cm->status_text),
