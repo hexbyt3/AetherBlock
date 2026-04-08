@@ -15,10 +15,12 @@
 #include "cfw_detect.h"
 #include "firmware_mgr.h"
 #include "cfw_mgr.h"
+#include "pending.h"
 
 static HostsFile       s_hosts;
 static UIState         s_ui;
 static SysSettingsFile s_sys_settings;
+static bool            s_exit_requested;
 
 static const SDL_Color TOAST_SUCCESS = { 50, 190,  70, 255};
 static const SDL_Color TOAST_WARN    = {230, 185,  40, 255};
@@ -310,8 +312,8 @@ static void handleFwManager(InputState *input) {
                 fwMgrStartDownload(fm);
             } else if (fm->state == FW_STATE_DONE) {
                 if (fwMgrLaunchDaybreak() == 0) {
-                    romfsExit();
                     s_hosts.dirty = false;
+                    s_exit_requested = true;
                     return;
                 } else {
                     uiShowToast(&s_ui, "Daybreak not found at /switch/daybreak.nro", TOAST_ERROR);
@@ -376,6 +378,7 @@ static void handleCfwManager(InputState *input) {
 }
 
 static bool shouldQuit(InputState *input) {
+    if (s_exit_requested) return true;
     for (int i = 0; i < input->count; i++) {
         if (input->events[i] == INPUT_PLUS && s_ui.current_screen == SCREEN_MAIN_LIST && !s_hosts.dirty)
             return true;
@@ -392,6 +395,10 @@ int main(int argc, char *argv[]) {
     romfsInit();
     plInitialize(PlServiceType_User);
     socketInitializeDefault();
+
+    /* finish any CFW file swaps that were staged before the last reboot
+       (package3, stratosphere.romfs, AetherBlock.nro, etc.) */
+    pendingApply();
 
     downloadGlobalInit();
 

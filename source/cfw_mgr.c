@@ -1,6 +1,7 @@
 #include "cfw_mgr.h"
 #include "download.h"
 #include "extract.h"
+#include "pending.h"
 #include "cfw_detect.h"
 #include "config.h"
 #include <cJSON.h>
@@ -126,7 +127,8 @@ static void *download_worker(void *arg) {
     int extract_errs = extractZip(CFW_DOWNLOAD_PATH, "/",
                                    PRESERVE_PATHS, PRESERVE_COUNT,
                                    extract_cb, cm,
-                                   cm->failed_files, sizeof(cm->failed_files));
+                                   cm->failed_files, sizeof(cm->failed_files),
+                                   1);
     if (extract_errs < 0) {
         cm->state = CFW_STATE_ERROR;
         snprintf(cm->error_text, sizeof(cm->error_text), "Extraction failed");
@@ -172,6 +174,12 @@ void cfwMgrStartDownload(CfwPackageManager *cm) {
 }
 
 int cfwMgrReboot(bool is_mariko) {
+    /* swap any files that were staged as .ab_new during extraction
+       (package3, stratosphere.romfs, AetherBlock.nro, etc.) — do this
+       right before the reboot call so nothing else has a chance to
+       reopen them first */
+    pendingApply();
+
     Result rc;
     if (is_mariko) {
         rc = spsmInitialize();

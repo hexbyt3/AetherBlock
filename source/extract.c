@@ -1,4 +1,5 @@
 #include "extract.h"
+#include "pending.h"
 #include <minizip/unzip.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,7 +68,8 @@ static void note_fail(char *buf, size_t buf_size, const char *name) {
 int extractZip(const char *zip_path, const char *dest_path,
                const char **preserve_prefixes, int preserve_count,
                ExtractProgressCb cb, void *userdata,
-               char *failed_out, size_t failed_out_size) {
+               char *failed_out, size_t failed_out_size,
+               int stage_locked_files) {
     unzFile zf = unzOpen(zip_path);
     if (!zf) return -1;
 
@@ -129,7 +131,9 @@ int extractZip(const char *zip_path, const char *dest_path,
             }
 
             char stash_path[1100];
+            char staged_path[1100];
             bool stashed = false;
+            bool staged = false;
             FILE *fp = fopen(full_path, "wb");
             if (!fp) {
                 /* probably a running sysmodule holding the file open;
@@ -140,6 +144,19 @@ int extractZip(const char *zip_path, const char *dest_path,
                     stashed = true;
                     fp = fopen(full_path, "wb");
                 }
+            }
+            if (!fp && stage_locked_files) {
+                /* still locked — write to a sidecar and queue it for a
+                   pre-reboot / next-launch swap */
+                if (stashed) {
+                    rename(stash_path, full_path);
+                    stashed = false;
+                }
+                snprintf(staged_path, sizeof(staged_path), "%s%s",
+                         full_path, PENDING_SUFFIX);
+                remove(staged_path);
+                fp = fopen(staged_path, "wb");
+                if (fp) staged = true;
             }
             if (!fp) {
                 if (stashed) rename(stash_path, full_path);
@@ -162,10 +179,17 @@ int extractZip(const char *zip_path, const char *dest_path,
             unzCloseCurrentFile(zf);
 
             if (!write_ok) {
-                remove(full_path);
-                if (stashed) rename(stash_path, full_path);
+                if (staged) {
+                    remove(staged_path);
+                } else {
+                    remove(full_path);
+                    if (stashed) rename(stash_path, full_path);
+                }
                 errors++;
                 note_fail(failed_out, failed_out_size, filename);
+            } else if (staged) {
+                /* queued for later; don't count as an error */
+                pendingAdd(full_path);
             } else if (stashed) {
                 remove(stash_path);
             }

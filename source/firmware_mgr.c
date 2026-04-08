@@ -134,7 +134,7 @@ static void *download_worker(void *arg) {
     removeDir(FIRMWARE_EXTRACT_PATH);
 
     int extract_errs = extractZip(FIRMWARE_DOWNLOAD_PATH, FIRMWARE_EXTRACT_PATH,
-                                   NULL, 0, extract_cb, fm, NULL, 0);
+                                   NULL, 0, extract_cb, fm, NULL, 0, 0);
     if (extract_errs < 0) {
         fm->state = FW_STATE_ERROR;
         snprintf(fm->error_text, sizeof(fm->error_text), "Extraction failed");
