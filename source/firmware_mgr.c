@@ -189,5 +189,21 @@ int fwMgrLaunchDaybreak(void) {
     char args[256];
     snprintf(args, sizeof(args), "\"%s\" \"%s\"", DAYBREAK_PATH, FIRMWARE_EXTRACT_PATH);
     Result rc = envSetNextLoad(DAYBREAK_PATH, args);
-    return R_SUCCEEDED(rc) ? 0 : -1;
+    if (R_FAILED(rc)) return -1;
+
+    /* drop a marker so the next launch of AetherBlock knows to wipe
+       /firmware/. we only do this on a successful handoff to Daybreak. */
+    mkdir(AETHERBLOCK_CONFIG_DIR, 0755);
+    FILE *marker = fopen(FW_CLEANUP_MARKER_PATH, "w");
+    if (marker) fclose(marker);
+
+    return 0;
+}
+
+void fwMgrCleanupIfPending(void) {
+    struct stat st;
+    if (stat(FW_CLEANUP_MARKER_PATH, &st) != 0) return;
+
+    removeDir(FIRMWARE_EXTRACT_PATH);
+    remove(FW_CLEANUP_MARKER_PATH);
 }

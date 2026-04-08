@@ -39,4 +39,9 @@ void fwMgrStartFetch(FirmwareManager *fm);
 void fwMgrStartDownload(FirmwareManager *fm);
 int  fwMgrLaunchDaybreak(void);
 
+/* If a "firmware cleanup pending" marker was left behind by a previous
+   launch of Daybreak, wipe the staged /firmware/ directory and clear
+   the marker. Safe to call unconditionally on startup. */
+void fwMgrCleanupIfPending(void);
+
 #endif

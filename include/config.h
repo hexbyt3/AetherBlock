@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #define APP_NAME            "AetherBlock"
-#define APP_VERSION         "2.0.5"
+#define APP_VERSION         "2.0.6"
 #define APP_AUTHOR          "HeXbyt3"
 
 #define HOSTS_MAX_ENTRIES   256
@@ -39,5 +39,6 @@
 #define CFW_ASSET_ERISTA       "unpatched"
 #define DAYBREAK_PATH          "/switch/daybreak.nro"
 #define AETHERBLOCK_CONFIG_DIR "/config/AetherBlock/"
+#define FW_CLEANUP_MARKER_PATH "/config/AetherBlock/fw_cleanup_pending"
 
 #endif

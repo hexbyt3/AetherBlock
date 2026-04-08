@@ -403,6 +403,9 @@ int main(int argc, char *argv[]) {
        (package3, stratosphere.romfs, AetherBlock.nro, etc.) */
     pendingApply();
 
+    /* wipe staged /firmware/ dir if we handed off to Daybreak last run */
+    fwMgrCleanupIfPending();
+
     downloadGlobalInit();
 
     hostsLoad(&s_hosts);
