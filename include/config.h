@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #define APP_NAME            "AetherBlock"
-#define APP_VERSION         "2.0.6"
+#define APP_VERSION         "2.0.7"
 #define APP_AUTHOR          "HeXbyt3"
 
 #define HOSTS_MAX_ENTRIES   256

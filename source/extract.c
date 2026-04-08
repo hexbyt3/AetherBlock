@@ -1,6 +1,7 @@
 #include "extract.h"
 #include "pending.h"
 #include <minizip/unzip.h>
+#include <switch.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +64,45 @@ static void note_fail(char *buf, size_t buf_size, const char *name) {
     size_t cur = strlen(buf);
     if (cur + 1 >= buf_size) return;
     snprintf(buf + cur, buf_size - cur, "%s%s", cur ? ", " : "", name);
+}
+
+/* Last-ditch write path for files that fopen refuses. We open the
+   existing file via libnx directly with Write|Append, truncate it,
+   and stream the zip entry into it via fsFileWrite. This sometimes
+   works on files that stdio can't reopen (different share semantics),
+   e.g. package3 / stratosphere.romfs on certain CFW states.
+   Returns true on full success. */
+static bool libnx_overwrite_from_zip(unzFile zf, const char *path,
+                                     char *buf, size_t buf_size) {
+    FsFileSystem *sdmc = fsdevGetDeviceFileSystem("sdmc");
+    if (!sdmc) return false;
+
+    FsFile file;
+    Result rc = fsFsOpenFile(sdmc, path,
+                             FsOpenMode_Write | FsOpenMode_Append,
+                             &file);
+    if (R_FAILED(rc)) return false;
+
+    if (R_FAILED(fsFileSetSize(&file, 0))) {
+        fsFileClose(&file);
+        return false;
+    }
+
+    s64 offset = 0;
+    int bytes;
+    bool ok = true;
+    while ((bytes = unzReadCurrentFile(zf, buf, (int)buf_size)) > 0) {
+        if (R_FAILED(fsFileWrite(&file, offset, buf, bytes,
+                                 FsWriteOption_None))) {
+            ok = false;
+            break;
+        }
+        offset += bytes;
+    }
+    if (bytes < 0) ok = false;
+
+    fsFileClose(&file);
+    return ok;
 }
 
 int extractZip(const char *zip_path, const char *dest_path,
@@ -134,6 +174,7 @@ int extractZip(const char *zip_path, const char *dest_path,
             char staged_path[1100];
             bool stashed = false;
             bool staged = false;
+            bool wrote_via_libnx = false;
             FILE *fp = fopen(full_path, "wb");
             if (!fp) {
                 /* probably a running sysmodule holding the file open;
@@ -146,22 +187,38 @@ int extractZip(const char *zip_path, const char *dest_path,
                 }
             }
             if (!fp && stage_locked_files) {
-                /* still locked — write to a sidecar and queue it for a
-                   pre-reboot / next-launch swap */
+                /* stdio can't touch this file. before we give up and
+                   write a sidecar, try the libnx direct path — it uses
+                   different open flags and sometimes wins where fopen
+                   loses (notably package3 / stratosphere.romfs). */
                 if (stashed) {
                     rename(stash_path, full_path);
                     stashed = false;
                 }
+                if (libnx_overwrite_from_zip(zf, full_path, buf, EXTRACT_BUF_SIZE)) {
+                    wrote_via_libnx = true;
+                }
+            }
+            if (!fp && !wrote_via_libnx && stage_locked_files) {
+                /* still locked — write to a sidecar and queue it for a
+                   pre-reboot / next-launch swap */
                 snprintf(staged_path, sizeof(staged_path), "%s%s",
                          full_path, PENDING_SUFFIX);
                 remove(staged_path);
                 fp = fopen(staged_path, "wb");
                 if (fp) staged = true;
             }
-            if (!fp) {
+            if (!fp && !wrote_via_libnx) {
                 if (stashed) rename(stash_path, full_path);
                 errors++;
                 note_fail(failed_out, failed_out_size, filename);
+                unzCloseCurrentFile(zf);
+                goto next_entry;
+            }
+
+            if (wrote_via_libnx) {
+                /* libnx already consumed the zip stream and wrote the
+                   file in place. nothing else to do for this entry. */
                 unzCloseCurrentFile(zf);
                 goto next_entry;
             }
