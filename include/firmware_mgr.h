@@ -31,9 +31,10 @@ typedef struct {
     char          error_text[256];
     pthread_t     worker;
     bool          worker_active;
+    char          cur_version[16];   /* installed HOS, e.g. "20.1.0" */
 } FirmwareManager;
 
-void fwMgrInit(FirmwareManager *fm);
+void fwMgrInit(FirmwareManager *fm, const char *current_fw);
 void fwMgrStartFetch(FirmwareManager *fm);
 void fwMgrStartDownload(FirmwareManager *fm);
 int  fwMgrLaunchDaybreak(void);

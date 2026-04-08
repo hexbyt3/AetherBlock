@@ -414,7 +414,7 @@ int main(int argc, char *argv[]) {
     detectCfwInfo(&cfw);
     snprintf(s_ui.current_fw_version, sizeof(s_ui.current_fw_version), "%s", cfw.fw_version);
 
-    fwMgrInit(&s_ui.fw_mgr);
+    fwMgrInit(&s_ui.fw_mgr, cfw.fw_version);
     cfwMgrInit(&s_ui.cfw_mgr);
 
     inputInit();

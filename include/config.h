@@ -30,7 +30,7 @@
 #define TOAST_FRAMES        120
 
 /* download / update paths */
-#define FIRMWARE_MANIFEST_URL  "https://raw.githubusercontent.com/hexbyt3/CFW4SysBots/main/manifests/firmware.json"
+#define FIRMWARE_RELEASES_URL  "https://api.github.com/repos/THZoria/NX_Firmware/releases?per_page=30"
 #define FIRMWARE_DOWNLOAD_PATH "/config/AetherBlock/firmware.zip"
 #define FIRMWARE_EXTRACT_PATH  "/firmware/"
 #define CFW_DOWNLOAD_PATH      "/config/AetherBlock/cfw_package.zip"

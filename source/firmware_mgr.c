@@ -21,16 +21,26 @@ static void extract_cb(int current, int total, const char *filename, void *userd
         fm->progress = (float)current / (float)total;
 }
 
-void fwMgrInit(FirmwareManager *fm) {
+void fwMgrInit(FirmwareManager *fm, const char *current_fw) {
     memset(fm, 0, sizeof(*fm));
     fm->state = FW_STATE_IDLE;
+    if (current_fw)
+        snprintf(fm->cur_version, sizeof(fm->cur_version), "%s", current_fw);
+}
+
+/* pack a HOS version into one int so we can compare with a single < / > */
+static int packVersion(const char *s) {
+    unsigned maj = 0, min = 0, mic = 0;
+    if (!s || sscanf(s, "%u.%u.%u", &maj, &min, &mic) < 2)
+        return -1;
+    return (int)((maj << 16) | (min << 8) | mic);
 }
 
 static void *fetch_worker(void *arg) {
     FirmwareManager *fm = arg;
 
     cJSON *json = NULL;
-    if (fetchJson(FIRMWARE_MANIFEST_URL, &json) != 0) {
+    if (fetchJson(FIRMWARE_RELEASES_URL, &json) != 0) {
         fm->state = FW_STATE_ERROR;
         snprintf(fm->error_text, sizeof(fm->error_text), "Failed to fetch firmware list");
         fm->worker_active = false;
@@ -40,32 +50,65 @@ static void *fetch_worker(void *arg) {
     if (!cJSON_IsArray(json)) {
         cJSON_Delete(json);
         fm->state = FW_STATE_ERROR;
-        snprintf(fm->error_text, sizeof(fm->error_text), "Invalid firmware manifest");
+        snprintf(fm->error_text, sizeof(fm->error_text), "Invalid releases response");
         fm->worker_active = false;
         return NULL;
     }
 
-    int size = cJSON_GetArraySize(json);
-    fm->count = (size > FW_MAX_ENTRIES) ? FW_MAX_ENTRIES : size;
+    int cur_packed = packVersion(fm->cur_version);
+    fm->count = 0;
 
-    for (int i = 0; i < fm->count; i++) {
-        cJSON *item = cJSON_GetArrayItem(json, i);
-        cJSON *ver = cJSON_GetObjectItem(item, "version");
-        cJSON *url = cJSON_GetObjectItem(item, "url");
+    int release_count = cJSON_GetArraySize(json);
+    for (int i = 0; i < release_count && fm->count < FW_MAX_ENTRIES; i++) {
+        cJSON *release = cJSON_GetArrayItem(json, i);
 
-        if (cJSON_IsString(ver))
-            snprintf(fm->entries[i].version, sizeof(fm->entries[i].version),
-                     "%s", ver->valuestring);
-        if (cJSON_IsString(url))
-            snprintf(fm->entries[i].url, sizeof(fm->entries[i].url),
-                     "%s", url->valuestring);
+        if (cJSON_IsTrue(cJSON_GetObjectItem(release, "draft")) ||
+            cJSON_IsTrue(cJSON_GetObjectItem(release, "prerelease")))
+            continue;
+
+        cJSON *tag = cJSON_GetObjectItem(release, "tag_name");
+        if (!cJSON_IsString(tag)) continue;
+
+        int rel_packed = packVersion(tag->valuestring);
+        if (rel_packed < 0) continue;
+
+        /* upgrade-only — never show anything at or below what's installed */
+        if (cur_packed >= 0 && rel_packed <= cur_packed)
+            continue;
+
+        cJSON *assets = cJSON_GetObjectItem(release, "assets");
+        if (!cJSON_IsArray(assets)) continue;
+
+        const char *zip_url = NULL;
+        int n = cJSON_GetArraySize(assets);
+        for (int j = 0; j < n; j++) {
+            cJSON *asset = cJSON_GetArrayItem(assets, j);
+            cJSON *name = cJSON_GetObjectItem(asset, "name");
+            cJSON *url  = cJSON_GetObjectItem(asset, "browser_download_url");
+            if (!cJSON_IsString(name) || !cJSON_IsString(url)) continue;
+            if (strstr(name->valuestring, ".zip")) {
+                zip_url = url->valuestring;
+                break;
+            }
+        }
+        if (!zip_url) continue;
+
+        FirmwareEntry *e = &fm->entries[fm->count++];
+        snprintf(e->version, sizeof(e->version), "%s", tag->valuestring);
+        snprintf(e->url, sizeof(e->url), "%s", zip_url);
     }
 
     cJSON_Delete(json);
+
     fm->state = FW_STATE_READY;
     fm->selected = 0;
-    snprintf(fm->status_text, sizeof(fm->status_text),
-             "%d firmware versions available", fm->count);
+    if (fm->count == 0)
+        snprintf(fm->status_text, sizeof(fm->status_text),
+                 "Already on latest (%s) — nothing to install", fm->cur_version);
+    else
+        snprintf(fm->status_text, sizeof(fm->status_text),
+                 "%d upgrade%s available from %s",
+                 fm->count, fm->count == 1 ? "" : "s", fm->cur_version);
     fm->worker_active = false;
     return NULL;
 }
