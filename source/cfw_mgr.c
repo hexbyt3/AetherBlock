@@ -142,11 +142,11 @@ static void *download_worker(void *arg) {
     cm->progress = 1.0f;
     if (extract_errs > 0)
         snprintf(cm->status_text, sizeof(cm->status_text),
-                 "CFW %s installed, %d file%s failed. Reboot to apply.",
+                 "CFW %s installed, %d file%s failed.",
                  cm->latest_tag, extract_errs, extract_errs == 1 ? "" : "s");
     else
         snprintf(cm->status_text, sizeof(cm->status_text),
-                 "CFW package %s installed! Reboot to apply.", cm->latest_tag);
+                 "CFW package %s installed!", cm->latest_tag);
     cm->worker_active = false;
     return NULL;
 }

@@ -768,7 +768,7 @@ static void drawCfwManagerScreen(UIState *ui) {
             prompt_y = cy + 60;
         }
 
-        const char *prompt = "Press A to reboot";
+        const char *prompt = "Press A to update firmware next";
         int pw = textWidth(ui->font_normal, prompt);
         drawText(ui->renderer, ui->font_normal, prompt,
                  (SCREEN_WIDTH - pw) / 2, prompt_y, COL_ACCENT);
@@ -837,8 +837,8 @@ static void drawCfwManagerScreen(UIState *ui) {
         drawButtonHint(ui->renderer, ui->font_small, "A", "Download & Install", tx, ty);
         tx += 230;
     } else if (cm->state == CFW_STATE_DONE) {
-        drawButtonHint(ui->renderer, ui->font_small, "A", "Reboot", tx, ty);
-        tx += 130;
+        drawButtonHint(ui->renderer, ui->font_small, "A", "Firmware", tx, ty);
+        tx += 150;
     }
     drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
 }

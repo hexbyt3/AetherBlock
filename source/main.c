@@ -359,7 +359,10 @@ static void handleCfwManager(InputState *input) {
             } else if (cm->state == CFW_STATE_READY) {
                 cfwMgrStartDownload(cm);
             } else if (cm->state == CFW_STATE_DONE) {
-                cfwMgrReboot(cm->is_mariko);
+                /* jump straight to the firmware manager so the user can
+                   update firmware in the same session — the single reboot
+                   at the end applies both. */
+                s_ui.current_screen = SCREEN_FW_MANAGER;
             } else if (cm->state == CFW_STATE_ERROR) {
                 cm->state = CFW_STATE_IDLE;
             }
