@@ -97,27 +97,34 @@ Or grab the full CFW package from [CFW4SysBots](https://github.com/hexbyt3/CFW4S
 
 ## Updating Your Switch
 
-You can update both CFW and firmware in one session with a single reboot at the end.
+One guided flow updates both your CFW and firmware with a single reboot at the end. AetherBlock walks you from one step to the next automatically.
 
-### Step 1: Update CFW Package
-1. Open AetherBlock from the Homebrew Menu
-2. Press **ZR** to open the CFW Package Updater
-3. Press **A** to check for updates, then **A** again to download and install
-4. **Don't reboot yet** — the new files are on your SD card and will take effect on the next boot
+1. Open AetherBlock from the Homebrew Menu and press **ZR** to open the CFW Package Updater
+2. Press **A** to check for the latest CFW4SysBots package, then **A** again to download and install it
+3. When extraction finishes, press **A** — AetherBlock jumps straight to the Firmware Manager for you
+4. Press **A** to fetch the Nintendo firmware list, pick the version you want, and press **A** to download
+5. When extraction finishes, press **A** to launch Daybreak
+6. In Daybreak: **Continue**, accept the default options, and let it install
+7. When Daybreak finishes, tap **Reboot** — Atmosphere's reboot-to-payload kicks in and the Switch comes back up on the new CFW and firmware
 
-### Step 2: Update Nintendo Firmware (if needed)
-1. Press **B** to go back, then press **ZL** to open the Firmware Manager
-2. Press **A** to fetch the firmware list
-3. Select the firmware version you want and press **A** to download
-4. When extraction finishes, press **A** to launch Daybreak
-5. Daybreak opens with the firmware ready — confirm the install
-6. **Reboot once** — the new Atmosphere and new firmware both take effect
+That's it. No PC, no RCM jig, no manual file management.
 
 ### Why CFW First?
 
-Atmosphere must be updated before the reboot that loads the new firmware. New Atmosphere releases add support for new Nintendo firmware versions. If only the firmware is updated and the old Atmosphere is still on the SD card when the Switch reboots, it won't be able to boot into CFW.
+Atmosphere has to be updated before the reboot that loads the new firmware. New Atmosphere releases add support for new Nintendo firmware versions — if only the firmware gets installed and the old Atmosphere is still on the SD card at boot, it won't be able to launch CFW.
 
-Extracting the CFW package just places files on the SD card — it doesn't affect the currently running system. The old Atmosphere keeps running in memory while you do everything. The new files only matter at boot, which is why you can do both steps back to back and reboot once at the end.
+Extracting the CFW package just places files on the SD card; it doesn't touch the currently running system. The old Atmosphere keeps running in memory while you do everything else. The new files only matter at boot, which is why you can do CFW → firmware → one reboot back to back.
+
+### How AetherBlock Handles Locked Files
+
+A couple of Atmosphere files (`package3`, `stratosphere.romfs`, and sometimes `AetherBlock.nro` itself) are held open by the running CFW and can't be overwritten with a plain file write. AetherBlock handles this transparently:
+
+1. During CFW extraction, it first tries a direct write, then a stash-and-rename, then a libnx direct-write path that bypasses stdio's share semantics. Most files land at that stage.
+2. For anything that still refuses to budge, the new content is staged as `<file>.ab_new` and queued in `/config/AetherBlock/pending.txt`.
+3. Right before the post-Daybreak reboot, AetherBlock tries to swap the staged files into place using a backup-rename-restore pattern so the real file is never in a missing state.
+4. On the next launch after reboot, any sidecars that are still around get one more attempt — including a byte-for-byte content check so redundant `.ab_new` files get cleaned up automatically.
+
+The net effect: you never have to manually rename anything, and stale sidecars don't accumulate on the SD card.
 
 ## Building
 
