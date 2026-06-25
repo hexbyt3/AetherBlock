@@ -237,8 +237,8 @@ int extractZip(const char *zip_path, const char *dest_path,
                 if (stashed) rename(stash_path, full_path);
                 errors++;
                 note_fail(failed_out, failed_out_size, filename);
-                if (is_boot_critical(filename))
-                    appLog("  [boot] %s: FAILED to open for write", filename);
+                appLog("  %s %s: FAILED to open for write",
+                       is_boot_critical(filename) ? "[boot]" : "[file]", filename);
                 unzCloseCurrentFile(zf);
                 goto next_entry;
             }
@@ -246,8 +246,8 @@ int extractZip(const char *zip_path, const char *dest_path,
             if (wrote_via_libnx) {
                 /* libnx already consumed the zip stream and wrote the
                    file in place. nothing else to do for this entry. */
-                if (is_boot_critical(filename))
-                    appLog("  [boot] %s: written in place via libnx", filename);
+                appLog("  %s %s: written in place via libnx",
+                       is_boot_critical(filename) ? "[boot]" : "[file]", filename);
                 unzCloseCurrentFile(zf);
                 goto next_entry;
             }
@@ -273,8 +273,8 @@ int extractZip(const char *zip_path, const char *dest_path,
                 }
                 errors++;
                 note_fail(failed_out, failed_out_size, filename);
-                if (is_boot_critical(filename))
-                    appLog("  [boot] %s: write FAILED mid-stream", filename);
+                appLog("  %s %s: write FAILED mid-stream",
+                       is_boot_critical(filename) ? "[boot]" : "[file]", filename);
             } else if (staged) {
                 /* Locked files go on the pending list so a later in-session
                    pass can retry them. Force-staged files (reboot_payload.bin)
@@ -283,13 +283,14 @@ int extractZip(const char *zip_path, const char *dest_path,
                    live boot payload would race ahead of package3. */
                 if (!force)
                     pendingAdd(full_path);
-                if (is_boot_critical(filename))
-                    appLog("  [boot] %s: %s -> staged as .ab_new, queued for swap",
-                           filename, force ? "force" : "LOCKED");
+                appLog("  %s %s: %s -> staged as .ab_new%s",
+                       is_boot_critical(filename) ? "[boot]" : "[file]", filename,
+                       force ? "force" : "LOCKED",
+                       force ? ", swapped pre-HOS" : ", queued for swap");
             } else if (stashed) {
                 remove(stash_path);
-                if (is_boot_critical(filename))
-                    appLog("  [boot] %s: written via stash+rewrite", filename);
+                appLog("  %s %s: written via stash+rewrite",
+                       is_boot_critical(filename) ? "[boot]" : "[file]", filename);
             } else if (is_boot_critical(filename)) {
                 appLog("  [boot] %s: written directly", filename);
             }

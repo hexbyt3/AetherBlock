@@ -18,7 +18,7 @@ ROMFS		:=	romfs
 
 APP_TITLE	:=	AetherBlock
 APP_AUTHOR	:=	HeXbyt3
-APP_VERSION	:=	2.1.0
+APP_VERSION	:=	2.1.1
 
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE

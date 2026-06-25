@@ -12,11 +12,19 @@
 #include <string.h>
 #include <sys/stat.h>
 
+/* Files we never overwrite on a CFW update -- user data that the package has
+   no business clobbering. NOTE: atmosphere/contents is deliberately NOT here.
+   That folder holds the bundled sysmodules (ldn_mitm 4200000000000010,
+   sys-botbase 430000000000000B) which MUST track the Atmosphere version --
+   an old ldn_mitm against a new Atmosphere fatals at boot (AFE2). Extraction
+   only writes paths that exist in the package, so user-added content under
+   atmosphere/contents (game cheats, extra sysmodules) is left untouched simply
+   by not being in the zip; we don't need to preserve the whole folder to
+   protect it, and doing so froze the sysmodules at their install-time version. */
 static const char *PRESERVE_PATHS[] = {
     "atmosphere/hosts",
     "atmosphere/config/system_settings.ini",
     "atmosphere/config/override_config.ini",
-    "atmosphere/contents",
     "config/AetherBlock",
     "Nintendo",
 };
