@@ -20,13 +20,25 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # Refresh the package DB and pull the latest libnx + portlibs so
-          # the build always targets current firmware/Atmosphere support
-          # rather than whatever libnx the container image was baked with.
-          dkp-pacman -Sy --noconfirm
-          dkp-pacman -S --noconfirm --needed libnx switch-curl switch-mbedtls switch-zlib
+          # Best-effort: refresh the DB and pull the latest libnx + portlibs so
+          # the build targets current firmware/Atmosphere support rather than
+          # whatever the container image was baked with. The devkitPro mirror
+          # intermittently 403s, so retry the sync and, if it stays down, fall
+          # back to the versions preinstalled in the container instead of
+          # failing the build.
+          synced=0
+          for i in 1 2 3; do
+            if dkp-pacman -Sy --noconfirm; then synced=1; break; fi
+            echo "package DB sync attempt $i failed; retrying in 10s..."; sleep 10
+          done
+          if [ "$synced" = 1 ]; then
+            dkp-pacman -S --noconfirm --needed libnx switch-curl switch-mbedtls switch-zlib \
+              || echo "package install failed; using preinstalled versions"
+          else
+            echo "package DB sync failed after retries; using preinstalled versions"
+          fi
           echo "## Toolchain" >> $GITHUB_STEP_SUMMARY
-          dkp-pacman -Q libnx switch-curl switch-mbedtls switch-zlib | tee -a $GITHUB_STEP_SUMMARY
+          dkp-pacman -Q libnx switch-curl switch-mbedtls switch-zlib | tee -a $GITHUB_STEP_SUMMARY || true
 
       - name: Build
         run: make
