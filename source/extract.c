@@ -1,5 +1,6 @@
 #include "extract.h"
 #include "pending.h"
+#include "applog.h"
 #include <minizip/unzip.h>
 #include <switch.h>
 #include <stdio.h>
@@ -11,6 +12,13 @@
 #include <dirent.h>
 
 #define EXTRACT_BUF_SIZE (256 * 1024)
+
+/* the four files whose versions must all match for the console to boot --
+   these are the ones worth tracing in the log when an update goes wrong */
+static bool is_boot_critical(const char *name) {
+    return strstr(name, "package3") || strstr(name, "stratosphere.romfs")
+        || strstr(name, "fusee") || strstr(name, "reboot_payload");
+}
 
 static bool has_path_traversal(const char *name) {
     if (strcmp(name, "..") == 0) return true;
@@ -212,6 +220,8 @@ int extractZip(const char *zip_path, const char *dest_path,
                 if (stashed) rename(stash_path, full_path);
                 errors++;
                 note_fail(failed_out, failed_out_size, filename);
+                if (is_boot_critical(filename))
+                    appLog("  [boot] %s: FAILED to open for write", filename);
                 unzCloseCurrentFile(zf);
                 goto next_entry;
             }
@@ -219,6 +229,8 @@ int extractZip(const char *zip_path, const char *dest_path,
             if (wrote_via_libnx) {
                 /* libnx already consumed the zip stream and wrote the
                    file in place. nothing else to do for this entry. */
+                if (is_boot_critical(filename))
+                    appLog("  [boot] %s: written in place via libnx", filename);
                 unzCloseCurrentFile(zf);
                 goto next_entry;
             }
@@ -244,11 +256,20 @@ int extractZip(const char *zip_path, const char *dest_path,
                 }
                 errors++;
                 note_fail(failed_out, failed_out_size, filename);
+                if (is_boot_critical(filename))
+                    appLog("  [boot] %s: write FAILED mid-stream", filename);
             } else if (staged) {
                 /* queued for later; don't count as an error */
                 pendingAdd(full_path);
+                if (is_boot_critical(filename))
+                    appLog("  [boot] %s: LOCKED -> staged as .ab_new, queued for swap",
+                           filename);
             } else if (stashed) {
                 remove(stash_path);
+                if (is_boot_critical(filename))
+                    appLog("  [boot] %s: written via stash+rewrite", filename);
+            } else if (is_boot_critical(filename)) {
+                appLog("  [boot] %s: written directly", filename);
             }
         }
 
@@ -264,7 +285,9 @@ next_entry:
        files (notably the 8 MB package3) are the first to be lost, which
        leaves a stale package3 that mismatches the freshly written fusee
        ("incorrect fusee version"). Force everything to the card now. */
-    fsdevCommitDevice("sdmc");
+    Result crc = fsdevCommitDevice("sdmc");
+    if (R_FAILED(crc))
+        appLog("  [boot] sdmc commit after extract FAILED (rc=0x%X)", crc);
     return errors;
 }
 

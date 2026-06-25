@@ -1,5 +1,6 @@
 #include "pending.h"
 #include "config.h"
+#include "applog.h"
 #include <switch.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -130,6 +131,8 @@ int pendingApply(void) {
         if (rename(target, backup) != 0) {
             /* target is locked against rename — keep the entry for a
                later retry (next reboot or next launch) */
+            appLog("  [pending] %s: LOCKED, cannot rename original aside -- "
+                   "still stale on disk", target);
             remaining[still_pending++] = entries[i];
             entries[i] = NULL;
             continue;
@@ -140,14 +143,20 @@ int pendingApply(void) {
                the source on a successful rename in all cases */
             remove(src);
             remove(backup);
+            appLog("  [pending] %s: swapped in", target);
             succeeded++;
         } else {
             /* couldn't install the new file — put the original back */
             rename(backup, target);
+            appLog("  [pending] %s: could not move sidecar into place -- "
+                   "rolled back to original", target);
             remaining[still_pending++] = entries[i];
             entries[i] = NULL;
         }
     }
+
+    if (count > 0)
+        appLog("  [pending] applied %d, still stale %d", succeeded, still_pending);
 
     /* rewrite the pending file with whatever we couldn't swap */
     if (still_pending > 0) {

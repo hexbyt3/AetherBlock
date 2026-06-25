@@ -219,7 +219,14 @@ int fwMgrLaunchDaybreak(void) {
        control to us, so this is our last chance to get package3 in sync
        with the new fusee/reboot_payload — skip it and the boot payload
        loads a stale package3 ("fusee is not on the latest package"). */
+    appLogSection("DAYBREAK HANDOFF");
+    appLog("applying any staged CFW swaps before reboot...");
     pendingApply();
+    if (pendingHasEntries())
+        appLog("WARNING: staged CFW files still pending after swap -- "
+               "package3 is likely STALE; reboot will mismatch fusee");
+    else
+        appLog("no staged CFW files remain pending");
 
     /* Final flush before we lose control to Daybreak's reboot. fsdev never
        commits on its own; an uncommitted 8 MB package3 reads stale after the
@@ -229,6 +236,8 @@ int fwMgrLaunchDaybreak(void) {
     if (R_FAILED(crc))
         appLog("WARNING: sdmc commit before Daybreak failed (rc=0x%X) -- "
                "package3 may not have persisted", crc);
+    else
+        appLog("sdmc committed; handing off to Daybreak");
 
     char args[256];
     snprintf(args, sizeof(args), "\"%s\" \"%s\"", DAYBREAK_PATH, FIRMWARE_EXTRACT_PATH);
