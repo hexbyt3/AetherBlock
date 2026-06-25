@@ -16,6 +16,7 @@
 #include "firmware_mgr.h"
 #include "cfw_mgr.h"
 #include "pending.h"
+#include "payload_swap.h"
 
 static HostsFile       s_hosts;
 static UIState         s_ui;
@@ -309,7 +310,17 @@ static void handleFwManager(InputState *input) {
             if (fm->state == FW_STATE_IDLE) {
                 fwMgrStartFetch(fm);
             } else if (fm->state == FW_STATE_READY) {
-                fwMgrStartDownload(fm);
+                if (fm->count == 0 && swapPending()) {
+                    /* no firmware to install but a CFW update is staged --
+                       reboot into the swap payload to finalize it. On success
+                       this does not return. */
+                    uiShowToast(&s_ui, "Finalizing CFW update, rebooting...", TOAST_INFO);
+                    uiRender(&s_ui, &s_hosts);
+                    cfwMgrReboot(s_ui.cfw_mgr.is_mariko);
+                    uiShowToast(&s_ui, "Reboot failed", TOAST_ERROR);
+                } else {
+                    fwMgrStartDownload(fm);
+                }
             } else if (fm->state == FW_STATE_DONE) {
                 if (fwMgrLaunchDaybreak() == 0) {
                     s_hosts.dirty = false;
@@ -406,6 +417,12 @@ int main(int argc, char *argv[]) {
     /* wipe staged /firmware/ dir if we handed off to Daybreak last run */
     fwMgrCleanupIfPending();
 
+    /* once a swap has fully landed there are no .ab_new sidecars left; drop the
+       stray startup.te so a later manual TegraExplorer boot can't re-trigger a
+       chainload. While a swap is still pending we leave it in place. */
+    if (!swapPending())
+        remove(STARTUP_TE_PATH);
+
     downloadGlobalInit();
 
     hostsLoad(&s_hosts);
@@ -474,6 +491,15 @@ int main(int argc, char *argv[]) {
     socketExit();
     plExit();
     romfsExit();
+
+    /* If a CFW update staged boot files that can't be swapped in-session,
+       swapPrepare() loaded the swap payload before romfs was torn down. Arm it
+       now -- dead-last, because swapArm() calls smExit() and nothing else may
+       touch sm afterward. We pass reboot_now=false: we've set Daybreak as the
+       next load, so its post-install reboot lands in the swap payload. If no
+       swap was prepared this is a no-op. */
+    if (swapIsPrepared())
+        swapArm(false);
 
     return 0;
 }

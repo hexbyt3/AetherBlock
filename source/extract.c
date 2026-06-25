@@ -20,6 +20,20 @@ static bool is_boot_critical(const char *name) {
         || strstr(name, "fusee") || strstr(name, "reboot_payload");
 }
 
+/* The version-matched boot set (package3, stratosphere.romfs,
+   reboot_payload.bin, root fusee.bin) is ALWAYS staged as .ab_new and never
+   written in place -- even the ones that aren't locked. They only flip
+   together in the pre-HOS swap payload (startup.te). This is what makes a
+   failed update non-bricking: until the swap runs, the whole old set is intact
+   and consistent, so no reboot path -- normal reboot, RCM-injected fusee, or
+   cold boot -- can ever pair a new boot payload with an old package3. */
+static bool is_force_stage(const char *name) {
+    return strstr(name, "package3") != NULL
+        || strstr(name, "stratosphere.romfs") != NULL
+        || strstr(name, "reboot_payload.bin") != NULL
+        || strstr(name, "fusee.bin") != NULL;
+}
+
 static bool has_path_traversal(const char *name) {
     if (strcmp(name, "..") == 0) return true;
     if (strncmp(name, "../", 3) == 0) return true;
@@ -183,8 +197,11 @@ int extractZip(const char *zip_path, const char *dest_path,
             bool stashed = false;
             bool staged = false;
             bool wrote_via_libnx = false;
-            FILE *fp = fopen(full_path, "wb");
-            if (!fp) {
+            /* force-staged boot files skip every in-place path and go straight
+               to a .ab_new sidecar, leaving the live file untouched */
+            bool force = stage_locked_files && is_force_stage(filename);
+            FILE *fp = force ? NULL : fopen(full_path, "wb");
+            if (!fp && !force) {
                 /* probably a running sysmodule holding the file open;
                    shove the old one aside and try again */
                 snprintf(stash_path, sizeof(stash_path), "%s.ab_old", full_path);
@@ -194,7 +211,7 @@ int extractZip(const char *zip_path, const char *dest_path,
                     fp = fopen(full_path, "wb");
                 }
             }
-            if (!fp && stage_locked_files) {
+            if (!fp && !force && stage_locked_files) {
                 /* stdio can't touch this file. before we give up and
                    write a sidecar, try the libnx direct path — it uses
                    different open flags and sometimes wins where fopen
@@ -259,11 +276,16 @@ int extractZip(const char *zip_path, const char *dest_path,
                 if (is_boot_critical(filename))
                     appLog("  [boot] %s: write FAILED mid-stream", filename);
             } else if (staged) {
-                /* queued for later; don't count as an error */
-                pendingAdd(full_path);
+                /* Locked files go on the pending list so a later in-session
+                   pass can retry them. Force-staged files (reboot_payload.bin)
+                   deliberately stay OFF the list -- they must only ever be
+                   swapped by the pre-HOS payload, never in-session, or the
+                   live boot payload would race ahead of package3. */
+                if (!force)
+                    pendingAdd(full_path);
                 if (is_boot_critical(filename))
-                    appLog("  [boot] %s: LOCKED -> staged as .ab_new, queued for swap",
-                           filename);
+                    appLog("  [boot] %s: %s -> staged as .ab_new, queued for swap",
+                           filename, force ? "force" : "LOCKED");
             } else if (stashed) {
                 remove(stash_path);
                 if (is_boot_critical(filename))

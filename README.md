@@ -115,18 +115,18 @@ Atmosphere has to be updated before the reboot that loads the new firmware. New 
 
 Extracting the CFW package just places files on the SD card; it doesn't touch the currently running system. The old Atmosphere keeps running in memory while you do everything else. The new files only matter at boot, which is why you can do CFW → firmware → one reboot back to back.
 
-### How AetherBlock Handles Locked Files
+### How AetherBlock Handles Locked Boot Files
 
-A couple of Atmosphere files (`package3`, `stratosphere.romfs`, and sometimes `AetherBlock.nro` itself) are held open by the running CFW and can't be overwritten with a plain file write. AetherBlock handles this transparently:
+`package3` and `stratosphere.romfs` are held open by the running Atmosphere and **cannot** be overwritten, renamed, or deleted while CFW is running — every in-session trick (plain write, stash-and-rename, libnx direct write) fails on them. The boot payload (`fusee.bin` / `reboot_payload.bin`) is the version-matched partner of `package3`; if the payload updates but `package3` doesn't, the console boots to a "incorrect fusee version" fatal. The only safe place to replace `package3` is **before HOS boots**, so AetherBlock finalizes the swap from a reboot payload:
 
-1. During CFW extraction, it first tries a direct write, then a stash-and-rename, then a libnx direct-write path that bypasses stdio's share semantics. Most files land at that stage.
-2. For anything that still refuses to budge, the new content is staged as `<file>.ab_new` and queued in `/config/AetherBlock/pending.txt`.
-3. Right before the post-Daybreak reboot, AetherBlock tries to swap the staged files into place using a backup-rename-restore pattern so the real file is never in a missing state.
-4. On the next launch after reboot, any sidecars that are still around get one more attempt — including a byte-for-byte content check so redundant `.ab_new` files get cleaned up automatically.
+1. During CFW extraction the whole version-matched boot set — `package3`, `stratosphere.romfs`, `atmosphere/reboot_payload.bin`, and the root `fusee.bin` — is staged as `<file>.ab_new` next to the originals and **never written in place**, even the files that aren't locked. That's deliberate: it guarantees neither the reboot payload nor an RCM-injected `fusee.bin` can ever get ahead of `package3`. The old, matched set stays fully in place — the running CFW is never left inconsistent, and no reboot path (normal, RCM jig, or cold boot) can pair a new fusee with an old `package3`.
+2. AetherBlock writes `sd:/startup.te` (a TegraScript) and arms **TegraExplorer** as the next reboot payload via Atmosphere's `bpc:ams` extension (`amsBpcSetRebootPayload`). Arming is done dead-last, after every other service is torn down, because it requires `smExit()`.
+3. The single reboot — Daybreak's post-install reboot, or AetherBlock's own for a CFW-only update — lands in TegraExplorer instead of fusee. Before any menu is drawn, `startup.te` renames each `.ab_new` into place (now unlocked, because HOS hasn't booted) and chainloads the now-consistent CFW.
+4. If anything goes wrong — arming fails, the payload is missing, power is lost — the old set is still intact, so the console simply boots the **old** CFW and the `.ab_new` files wait for a retry. A new fusee never meets an old `package3`, so this path **cannot brick**.
 
-Critically, libnx never flushes SD writes to the card on its own — `fclose` only drops the data into the filesystem cache. After every extraction, after every staged swap, and one final time right before control passes to Daybreak's reboot, AetherBlock calls `fsdevCommitDevice("sdmc")` to force everything to physically persist. Without this, a large file like the 8 MB `package3` can read back stale after the reboot even though every write reported success — leaving a new `fusee` paired with an old `package3` and the dreaded "incorrect fusee version" boot error.
+libnx also never flushes SD writes on its own (`fclose` only fills the FS cache), so AetherBlock calls `fsdevCommitDevice("sdmc")` after extraction, after writing `startup.te`, and on every log line, to guarantee everything is physically on the card before the reboot.
 
-The net effect: you never have to manually rename anything, stale sidecars don't accumulate on the SD card, and the boot files are guaranteed on-disk before the reboot.
+The bundled `romfs/TegraExplorer.bin` is the stock [TegraExplorer](https://github.com/suchmememanyskill/TegraExplorer) v4.2.0 release (GPL-2.0) by suchmememanyskill — used unmodified; it auto-runs `sd:/startup.te` on boot.
 
 ## Building
 

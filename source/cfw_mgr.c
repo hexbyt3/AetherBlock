@@ -2,6 +2,7 @@
 #include "download.h"
 #include "extract.h"
 #include "pending.h"
+#include "payload_swap.h"
 #include "cfw_detect.h"
 #include "config.h"
 #include "applog.h"
@@ -204,16 +205,19 @@ void cfwMgrStartDownload(CfwPackageManager *cm) {
 }
 
 int cfwMgrReboot(bool is_mariko) {
-    /* swap any files that were staged as .ab_new during extraction
-       (package3, stratosphere.romfs, AetherBlock.nro, etc.) — do this
-       right before the reboot call so nothing else has a chance to
-       reopen them first */
-    pendingApply();
+    /* If a CFW update left boot files staged (package3 etc. can't be swapped
+       while Atmosphère runs), reboot into the swap payload instead of a normal
+       reboot: it renames the .ab_new files in place pre-HOS and chainloads the
+       now-consistent CFW. swapArm(true) calls smExit() and reboots, so it does
+       not return on success. On Mariko or any failure it returns and we fall
+       through to a normal reboot -- the old, matched set is still in place, so
+       that just boots the old CFW (no brick). */
+    if (!is_mariko && swapPending() && swapPrepare() == 0)
+        swapArm(true);
 
-    /* fsdev doesn't flush on its own -- make sure every staged swap and
-       freshly written boot file is actually on the card before we pull the
-       trigger, otherwise a stale package3 boots and fails the fusee version
-       check. */
+    /* swap any ordinary (non-boot) files staged as .ab_new, then flush --
+       fsdev doesn't commit on its own. */
+    pendingApply();
     fsdevCommitDevice("sdmc");
 
     Result rc;

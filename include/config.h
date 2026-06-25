@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #define APP_NAME            "AetherBlock"
-#define APP_VERSION         "2.0.11"
+#define APP_VERSION         "2.1.0"
 #define APP_AUTHOR          "HeXbyt3"
 
 #define HOSTS_MAX_ENTRIES   256
@@ -40,6 +40,12 @@
 #define DAYBREAK_PATH          "/switch/daybreak.nro"
 #define AETHERBLOCK_CONFIG_DIR "/config/AetherBlock/"
 #define FW_CLEANUP_MARKER_PATH "/config/AetherBlock/fw_cleanup_pending"
+
+/* pre-HOS swap: TegraExplorer payload + the script it auto-runs on boot.
+   Used to finalize locked boot files (package3, stratosphere.romfs,
+   reboot_payload.bin) that can't be replaced while Atmosphère is running. */
+#define SWAP_PAYLOAD_ROMFS     "romfs:/TegraExplorer.bin"
+#define STARTUP_TE_PATH        "/startup.te"
 
 /* diagnostics + download integrity */
 #define APP_LOG_PATH           "/config/AetherBlock/last_error.log"

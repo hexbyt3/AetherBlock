@@ -2,6 +2,7 @@
 #include "download.h"
 #include "extract.h"
 #include "pending.h"
+#include "payload_swap.h"
 #include "config.h"
 #include "applog.h"
 #include <cJSON.h>
@@ -213,31 +214,34 @@ int fwMgrLaunchDaybreak(void) {
     if (stat(DAYBREAK_PATH, &st) != 0)
         return -1;
 
-    /* swap in any CFW files that were staged as .ab_new during extraction
-       (package3, stratosphere.romfs, ...) BEFORE we hand off. Daybreak
-       reboots the console itself via reboot-to-payload and never returns
-       control to us, so this is our last chance to get package3 in sync
-       with the new fusee/reboot_payload — skip it and the boot payload
-       loads a stale package3 ("fusee is not on the latest package"). */
     appLogSection("DAYBREAK HANDOFF");
-    appLog("applying any staged CFW swaps before reboot...");
-    pendingApply();
-    if (pendingHasEntries())
-        appLog("WARNING: staged CFW files still pending after swap -- "
-               "package3 is likely STALE; reboot will mismatch fusee");
-    else
-        appLog("no staged CFW files remain pending");
 
-    /* Final flush before we lose control to Daybreak's reboot. fsdev never
-       commits on its own; an uncommitted 8 MB package3 reads stale after the
-       reboot even though every write "succeeded". This is the single most
-       important commit in the whole update flow. */
+    /* package3 / stratosphere.romfs are locked while Atmosphère runs and can't
+       be swapped in-session -- proven by the logs. If any boot file is staged,
+       prepare the pre-HOS swap: write sd:/startup.te and load TegraExplorer.
+       The actual arm (smExit + bpc) happens dead-last in main(), so Daybreak's
+       post-install reboot lands in TegraExplorer, which renames the .ab_new
+       files into place and chainloads the now-consistent CFW.
+
+       We deliberately do NOT pendingApply() here: the locked files can't swap
+       anyway, and force-staged reboot_payload.bin must stay old until the
+       payload flips the whole set at once (that's what prevents a brick). */
+    if (swapPending()) {
+        appLog("staged CFW boot files present -- arming pre-HOS swap payload");
+        if (swapPrepare() != 0)
+            appLog("WARNING: could not arm swap payload; CFW will stay on the "
+                   "old version (no brick) -- finish via PC if needed");
+    } else {
+        /* nothing locked this time -- apply any ordinary staged swaps */
+        pendingApply();
+        appLog("no staged boot files; normal handoff");
+    }
+
+    /* flush everything (startup.te, sidecars, pending list) before we lose
+       control -- fsdev never commits on its own. */
     Result crc = fsdevCommitDevice("sdmc");
     if (R_FAILED(crc))
-        appLog("WARNING: sdmc commit before Daybreak failed (rc=0x%X) -- "
-               "package3 may not have persisted", crc);
-    else
-        appLog("sdmc committed; handing off to Daybreak");
+        appLog("WARNING: sdmc commit before Daybreak failed (rc=0x%X)", crc);
 
     char args[256];
     snprintf(args, sizeof(args), "\"%s\" \"%s\"", DAYBREAK_PATH, FIRMWARE_EXTRACT_PATH);
