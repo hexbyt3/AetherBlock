@@ -4,6 +4,7 @@
 #include "pending.h"
 #include "cfw_detect.h"
 #include "config.h"
+#include "applog.h"
 #include <cJSON.h>
 #include <switch.h>
 #include <stdio.h>
@@ -60,6 +61,8 @@ static int parse_release(cJSON *json, CfwPackageManager *cm) {
         if (strstr(name->valuestring, variant) && strstr(name->valuestring, ".zip")) {
             snprintf(cm->download_url, sizeof(cm->download_url),
                      "%s", url->valuestring);
+            cJSON *size = cJSON_GetObjectItem(asset, "size");
+            cm->download_size = cJSON_IsNumber(size) ? (long long)size->valuedouble : 0;
             return 0;
         }
     }
@@ -112,9 +115,20 @@ static void *download_worker(void *arg) {
 
     mkdir(AETHERBLOCK_CONFIG_DIR, 0755);
 
-    if (downloadFile(cm->download_url, CFW_DOWNLOAD_PATH, progress_cb, cm) != 0) {
+    appLogSection("CFW UPDATE");
+    appLog("package: %s  console: %s", cm->latest_tag,
+           cm->is_mariko ? "Mariko/mod-chipped" : "Erista/unpatched");
+    appLog("url: %s", cm->download_url);
+    appLog("expected size: %lld bytes", cm->download_size);
+
+    char reason[160];
+    if (downloadFileChecked(cm->download_url, CFW_DOWNLOAD_PATH,
+                            cm->download_size, DOWNLOAD_MAX_ATTEMPTS,
+                            progress_cb, cm, reason, sizeof(reason)) != 0) {
         cm->state = CFW_STATE_ERROR;
-        snprintf(cm->error_text, sizeof(cm->error_text), "Download failed");
+        snprintf(cm->error_text, sizeof(cm->error_text), "Download failed: %s", reason);
+        appLog("ERROR: download failed after %d attempts: %s",
+               DOWNLOAD_MAX_ATTEMPTS, reason);
         cm->worker_active = false;
         return NULL;
     }
@@ -130,8 +144,20 @@ static void *download_worker(void *arg) {
                                    cm->failed_files, sizeof(cm->failed_files),
                                    1);
     if (extract_errs < 0) {
+        const char *why;
+        switch (extract_errs) {
+            case EXTRACT_ERR_OPEN:
+                why = "package corrupt - delete cfw_package.zip and retry"; break;
+            case EXTRACT_ERR_INDEX:
+                why = "archive index unreadable (corrupt download)"; break;
+            case EXTRACT_ERR_MEMORY:
+                why = "out of memory"; break;
+            default:
+                why = "unknown error"; break;
+        }
         cm->state = CFW_STATE_ERROR;
-        snprintf(cm->error_text, sizeof(cm->error_text), "Extraction failed");
+        snprintf(cm->error_text, sizeof(cm->error_text), "Extraction failed: %s", why);
+        appLog("ERROR: extraction aborted (code %d): %s", extract_errs, why);
         cm->worker_active = false;
         return NULL;
     }
@@ -140,13 +166,17 @@ static void *download_worker(void *arg) {
 
     cm->state = CFW_STATE_DONE;
     cm->progress = 1.0f;
-    if (extract_errs > 0)
+    if (extract_errs > 0) {
         snprintf(cm->status_text, sizeof(cm->status_text),
                  "CFW %s installed, %d file%s failed.",
                  cm->latest_tag, extract_errs, extract_errs == 1 ? "" : "s");
-    else
+        appLog("done with %d file error(s): %s",
+               extract_errs, cm->failed_files[0] ? cm->failed_files : "(none recorded)");
+    } else {
         snprintf(cm->status_text, sizeof(cm->status_text),
                  "CFW package %s installed!", cm->latest_tag);
+        appLog("done: CFW %s installed cleanly", cm->latest_tag);
+    }
     cm->worker_active = false;
     return NULL;
 }

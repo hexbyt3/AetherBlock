@@ -20,9 +20,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          dkp-pacman -Sy --noconfirm switch-curl switch-mbedtls switch-zlib \
-            || echo "Package sync failed — checking if already installed..." \
-            && dkp-pacman -Q switch-curl switch-mbedtls switch-zlib
+          # Refresh the package DB and pull the latest libnx + portlibs so
+          # the build always targets current firmware/Atmosphere support
+          # rather than whatever libnx the container image was baked with.
+          dkp-pacman -Sy --noconfirm
+          dkp-pacman -S --noconfirm --needed libnx switch-curl switch-mbedtls switch-zlib
+          echo "## Toolchain" >> $GITHUB_STEP_SUMMARY
+          dkp-pacman -Q libnx switch-curl switch-mbedtls switch-zlib | tee -a $GITHUB_STEP_SUMMARY
 
       - name: Build
         run: make

@@ -18,6 +18,7 @@ typedef struct {
     char        current_ams[32];
     char        latest_tag[32];
     char        download_url[512];
+    long long   download_size;   /* expected asset size in bytes, 0 if unknown */
     char        changelog[4096];
     bool        update_available;
     bool        is_mariko;

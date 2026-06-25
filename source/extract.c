@@ -111,7 +111,7 @@ int extractZip(const char *zip_path, const char *dest_path,
                char *failed_out, size_t failed_out_size,
                int stage_locked_files) {
     unzFile zf = unzOpen(zip_path);
-    if (!zf) return -1;
+    if (!zf) return EXTRACT_ERR_OPEN;
 
     if (failed_out && failed_out_size > 0)
         failed_out[0] = '\0';
@@ -119,14 +119,14 @@ int extractZip(const char *zip_path, const char *dest_path,
     unz_global_info gi;
     if (unzGetGlobalInfo(zf, &gi) != UNZ_OK) {
         unzClose(zf);
-        return -1;
+        return EXTRACT_ERR_INDEX;
     }
 
     int total = (int)gi.number_entry;
     char *buf = malloc(EXTRACT_BUF_SIZE);
     if (!buf) {
         unzClose(zf);
-        return -1;
+        return EXTRACT_ERR_MEMORY;
     }
 
     ensure_dir(dest_path);

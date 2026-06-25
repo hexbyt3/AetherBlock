@@ -3,6 +3,15 @@
 
 #include <stddef.h>
 
+/* Negative return values from extractZip — hard failures that abort the
+   whole operation before any file is written. A non-negative return is
+   the count of individual entries that failed mid-extraction. */
+enum {
+    EXTRACT_ERR_OPEN   = -1,  /* zip could not be opened (corrupt/truncated) */
+    EXTRACT_ERR_INDEX  = -2,  /* archive directory could not be read */
+    EXTRACT_ERR_MEMORY = -3,  /* out of memory for the copy buffer */
+};
+
 typedef void (*ExtractProgressCb)(int current, int total, const char *filename, void *userdata);
 
 /* If stage_locked_files is non-zero, any file that can't be written

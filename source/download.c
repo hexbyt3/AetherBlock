@@ -1,11 +1,13 @@
 #include "download.h"
 #include "config.h"
+#include "applog.h"
 #include <curl/curl.h>
 #include <cJSON.h>
 #include <switch.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/stat.h>
 
 #define USER_AGENT "AetherBlock/" APP_VERSION
 
@@ -75,16 +77,24 @@ void downloadGlobalCleanup(void) {
     curl_global_cleanup();
 }
 
-int downloadFile(const char *url, const char *output_path,
-                 DownloadProgressCb cb, void *userdata) {
+/* one download attempt; on failure writes a human-readable cause into
+   reason and removes any partial file. Returns 0 on success. */
+static int download_once(const char *url, const char *output_path,
+                         DownloadProgressCb cb, void *userdata,
+                         char *reason, size_t reason_size) {
     FILE *fp = fopen(output_path, "wb");
-    if (!fp) return -1;
+    if (!fp) {
+        if (reason) snprintf(reason, reason_size, "cannot open %s for writing", output_path);
+        return -1;
+    }
 
     FileWriteCtx ctx = { .fp = fp, .cb = cb, .userdata = userdata };
 
     CURL *curl = make_curl(url);
     if (!curl) {
         fclose(fp);
+        remove(output_path);
+        if (reason) snprintf(reason, reason_size, "curl init failed");
         return -1;
     }
 
@@ -103,11 +113,63 @@ int downloadFile(const char *url, const char *output_path,
     curl_easy_cleanup(curl);
     fclose(fp);
 
-    if (res != CURLE_OK || http_code < 200 || http_code >= 400) {
+    if (res != CURLE_OK) {
+        if (reason) snprintf(reason, reason_size, "network error: %s", curl_easy_strerror(res));
+        remove(output_path);
+        return -1;
+    }
+    if (http_code < 200 || http_code >= 400) {
+        if (reason) snprintf(reason, reason_size, "server returned HTTP %ld", http_code);
         remove(output_path);
         return -1;
     }
     return 0;
+}
+
+int downloadFile(const char *url, const char *output_path,
+                 DownloadProgressCb cb, void *userdata) {
+    char reason[160];
+    return download_once(url, output_path, cb, userdata, reason, sizeof(reason));
+}
+
+int downloadFileChecked(const char *url, const char *output_path,
+                        long long expected_size, int max_attempts,
+                        DownloadProgressCb cb, void *userdata,
+                        char *reason_out, size_t reason_out_size) {
+    char reason[160] = "no attempt made";
+    if (max_attempts < 1) max_attempts = 1;
+
+    for (int attempt = 1; attempt <= max_attempts; attempt++) {
+        if (download_once(url, output_path, cb, userdata, reason, sizeof(reason)) != 0) {
+            appLog("download attempt %d/%d failed: %s", attempt, max_attempts, reason);
+            continue;
+        }
+
+        if (expected_size > 0) {
+            struct stat st;
+            if (stat(output_path, &st) != 0) {
+                snprintf(reason, sizeof(reason), "downloaded file vanished before verification");
+                appLog("download attempt %d/%d: %s", attempt, max_attempts, reason);
+                continue;
+            }
+            if ((long long)st.st_size != expected_size) {
+                snprintf(reason, sizeof(reason), "incomplete: got %lld of %lld bytes",
+                         (long long)st.st_size, expected_size);
+                appLog("download attempt %d/%d %s", attempt, max_attempts, reason);
+                remove(output_path);
+                continue;
+            }
+        }
+
+        appLog("download ok on attempt %d/%d (%lld bytes)", attempt, max_attempts,
+               expected_size > 0 ? expected_size : (long long)0);
+        if (reason_out && reason_out_size) reason_out[0] = '\0';
+        return 0;
+    }
+
+    if (reason_out && reason_out_size)
+        snprintf(reason_out, reason_out_size, "%s", reason);
+    return -1;
 }
 
 int downloadToMemory(const char *url, char **out_buf, size_t *out_len) {

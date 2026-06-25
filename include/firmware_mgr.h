@@ -7,8 +7,9 @@
 #define FW_MAX_ENTRIES 64
 
 typedef struct {
-    char version[32];
-    char url[512];
+    char      version[32];
+    char      url[512];
+    long long size;       /* expected asset size in bytes, 0 if unknown */
 } FirmwareEntry;
 
 typedef enum {

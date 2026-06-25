@@ -2,6 +2,7 @@
 #include "download.h"
 #include "extract.h"
 #include "config.h"
+#include "applog.h"
 #include <cJSON.h>
 #include <switch.h>
 #include <stdio.h>
@@ -80,6 +81,7 @@ static void *fetch_worker(void *arg) {
         if (!cJSON_IsArray(assets)) continue;
 
         const char *zip_url = NULL;
+        long long zip_size = 0;
         int n = cJSON_GetArraySize(assets);
         for (int j = 0; j < n; j++) {
             cJSON *asset = cJSON_GetArrayItem(assets, j);
@@ -88,6 +90,8 @@ static void *fetch_worker(void *arg) {
             if (!cJSON_IsString(name) || !cJSON_IsString(url)) continue;
             if (strstr(name->valuestring, ".zip")) {
                 zip_url = url->valuestring;
+                cJSON *size = cJSON_GetObjectItem(asset, "size");
+                zip_size = cJSON_IsNumber(size) ? (long long)size->valuedouble : 0;
                 break;
             }
         }
@@ -96,6 +100,7 @@ static void *fetch_worker(void *arg) {
         FirmwareEntry *e = &fm->entries[fm->count++];
         snprintf(e->version, sizeof(e->version), "%s", tag->valuestring);
         snprintf(e->url, sizeof(e->url), "%s", zip_url);
+        e->size = zip_size;
     }
 
     cJSON_Delete(json);
@@ -119,10 +124,19 @@ static void *download_worker(void *arg) {
 
     mkdir(AETHERBLOCK_CONFIG_DIR, 0755);
 
-    if (downloadFile(entry->url, FIRMWARE_DOWNLOAD_PATH, progress_cb, fm) != 0) {
+    appLogSection("FIRMWARE UPDATE");
+    appLog("firmware: %s  url: %s", entry->version, entry->url);
+    appLog("expected size: %lld bytes", entry->size);
+
+    char reason[160];
+    if (downloadFileChecked(entry->url, FIRMWARE_DOWNLOAD_PATH,
+                            entry->size, DOWNLOAD_MAX_ATTEMPTS,
+                            progress_cb, fm, reason, sizeof(reason)) != 0) {
         fm->state = FW_STATE_ERROR;
         snprintf(fm->error_text, sizeof(fm->error_text),
-                 "Download failed for firmware %s", entry->version);
+                 "Download failed for firmware %s: %s", entry->version, reason);
+        appLog("ERROR: firmware download failed after %d attempts: %s",
+               DOWNLOAD_MAX_ATTEMPTS, reason);
         fm->worker_active = false;
         return NULL;
     }
@@ -136,8 +150,20 @@ static void *download_worker(void *arg) {
     int extract_errs = extractZip(FIRMWARE_DOWNLOAD_PATH, FIRMWARE_EXTRACT_PATH,
                                    NULL, 0, extract_cb, fm, NULL, 0, 0);
     if (extract_errs < 0) {
+        const char *why;
+        switch (extract_errs) {
+            case EXTRACT_ERR_OPEN:
+                why = "package corrupt - delete firmware.zip and retry"; break;
+            case EXTRACT_ERR_INDEX:
+                why = "archive index unreadable (corrupt download)"; break;
+            case EXTRACT_ERR_MEMORY:
+                why = "out of memory"; break;
+            default:
+                why = "unknown error"; break;
+        }
         fm->state = FW_STATE_ERROR;
-        snprintf(fm->error_text, sizeof(fm->error_text), "Extraction failed");
+        snprintf(fm->error_text, sizeof(fm->error_text), "Extraction failed: %s", why);
+        appLog("ERROR: firmware extraction aborted (code %d): %s", extract_errs, why);
         fm->worker_active = false;
         return NULL;
     }

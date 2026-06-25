@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #define APP_NAME            "AetherBlock"
-#define APP_VERSION         "2.0.7"
+#define APP_VERSION         "2.0.8"
 #define APP_AUTHOR          "HeXbyt3"
 
 #define HOSTS_MAX_ENTRIES   256
@@ -40,5 +40,10 @@
 #define DAYBREAK_PATH          "/switch/daybreak.nro"
 #define AETHERBLOCK_CONFIG_DIR "/config/AetherBlock/"
 #define FW_CLEANUP_MARKER_PATH "/config/AetherBlock/fw_cleanup_pending"
+
+/* diagnostics + download integrity */
+#define APP_LOG_PATH           "/config/AetherBlock/last_error.log"
+#define APP_LOG_MAX_SIZE       16384   /* rotate the log past this many bytes */
+#define DOWNLOAD_MAX_ATTEMPTS  3       /* retry truncated/failed transfers */
 
 #endif
