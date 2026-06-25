@@ -210,6 +210,12 @@ int cfwMgrReboot(bool is_mariko) {
        reopen them first */
     pendingApply();
 
+    /* fsdev doesn't flush on its own -- make sure every staged swap and
+       freshly written boot file is actually on the card before we pull the
+       trigger, otherwise a stale package3 boots and fails the fusee version
+       check. */
+    fsdevCommitDevice("sdmc");
+
     Result rc;
     if (is_mariko) {
         rc = spsmInitialize();

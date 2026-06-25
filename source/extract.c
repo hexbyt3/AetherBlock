@@ -258,6 +258,13 @@ next_entry:
 
     free(buf);
     unzClose(zf);
+
+    /* libnx fsdev does NOT flush SD writes on fclose -- without an explicit
+       commit the data sits in the FS cache and a reboot can drop it. Large
+       files (notably the 8 MB package3) are the first to be lost, which
+       leaves a stale package3 that mismatches the freshly written fusee
+       ("incorrect fusee version"). Force everything to the card now. */
+    fsdevCommitDevice("sdmc");
     return errors;
 }
 

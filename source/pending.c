@@ -1,5 +1,6 @@
 #include "pending.h"
 #include "config.h"
+#include <switch.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -164,6 +165,12 @@ int pendingApply(void) {
         free(entries[i]);
     free(entries);
     free(remaining);
+
+    /* flush the renames to the card -- fsdev doesn't commit on its own, so a
+       swapped-in package3 that isn't committed would still read stale after
+       the reboot. */
+    if (succeeded > 0)
+        fsdevCommitDevice("sdmc");
 
     return succeeded;
 }

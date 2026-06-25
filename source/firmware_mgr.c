@@ -221,6 +221,15 @@ int fwMgrLaunchDaybreak(void) {
        loads a stale package3 ("fusee is not on the latest package"). */
     pendingApply();
 
+    /* Final flush before we lose control to Daybreak's reboot. fsdev never
+       commits on its own; an uncommitted 8 MB package3 reads stale after the
+       reboot even though every write "succeeded". This is the single most
+       important commit in the whole update flow. */
+    Result crc = fsdevCommitDevice("sdmc");
+    if (R_FAILED(crc))
+        appLog("WARNING: sdmc commit before Daybreak failed (rc=0x%X) -- "
+               "package3 may not have persisted", crc);
+
     char args[256];
     snprintf(args, sizeof(args), "\"%s\" \"%s\"", DAYBREAK_PATH, FIRMWARE_EXTRACT_PATH);
     Result rc = envSetNextLoad(DAYBREAK_PATH, args);

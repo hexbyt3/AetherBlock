@@ -124,7 +124,9 @@ A couple of Atmosphere files (`package3`, `stratosphere.romfs`, and sometimes `A
 3. Right before the post-Daybreak reboot, AetherBlock tries to swap the staged files into place using a backup-rename-restore pattern so the real file is never in a missing state.
 4. On the next launch after reboot, any sidecars that are still around get one more attempt — including a byte-for-byte content check so redundant `.ab_new` files get cleaned up automatically.
 
-The net effect: you never have to manually rename anything, and stale sidecars don't accumulate on the SD card.
+Critically, libnx never flushes SD writes to the card on its own — `fclose` only drops the data into the filesystem cache. After every extraction, after every staged swap, and one final time right before control passes to Daybreak's reboot, AetherBlock calls `fsdevCommitDevice("sdmc")` to force everything to physically persist. Without this, a large file like the 8 MB `package3` can read back stale after the reboot even though every write reported success — leaving a new `fusee` paired with an old `package3` and the dreaded "incorrect fusee version" boot error.
+
+The net effect: you never have to manually rename anything, stale sidecars don't accumulate on the SD card, and the boot files are guaranteed on-disk before the reboot.
 
 ## Building
 
