@@ -1,6 +1,7 @@
 #include "firmware_mgr.h"
 #include "download.h"
 #include "extract.h"
+#include "pending.h"
 #include "config.h"
 #include "applog.h"
 #include <cJSON.h>
@@ -211,6 +212,14 @@ int fwMgrLaunchDaybreak(void) {
     struct stat st;
     if (stat(DAYBREAK_PATH, &st) != 0)
         return -1;
+
+    /* swap in any CFW files that were staged as .ab_new during extraction
+       (package3, stratosphere.romfs, ...) BEFORE we hand off. Daybreak
+       reboots the console itself via reboot-to-payload and never returns
+       control to us, so this is our last chance to get package3 in sync
+       with the new fusee/reboot_payload — skip it and the boot payload
+       loads a stale package3 ("fusee is not on the latest package"). */
+    pendingApply();
 
     char args[256];
     snprintf(args, sizeof(args), "\"%s\" \"%s\"", DAYBREAK_PATH, FIRMWARE_EXTRACT_PATH);
