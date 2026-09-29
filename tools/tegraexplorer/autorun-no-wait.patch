@@ -1,0 +1,23 @@
+diff --git a/source/main.c b/source/main.c
+index a6a62ec..bee3175 100644
+--- a/source/main.c
++++ b/source/main.c
+@@ -286,13 +286,16 @@ void ipl_main()
+ 
+ 	TConf.keysDumped = (res > 0) ? 0 : 1;
+ 
+-	if (res > 0)
++	// AetherBlock: an unattended startup.te run must never stop for input.
++	bool autorun = FileExists("sd:/startup.te");
++
++	if (res > 0 && !autorun)
+ 		DrawError(newErrCode(TE_ERR_KEYDUMP_FAIL));
+ 	
+ 	if (TConf.keysDumped)
+ 		SetKeySlots();
+ 	
+-	if (res == 0)
++	if (res == 0 && !autorun)
+ 		hidWait();
+ 
+ 	if (FileExists("sd:/startup.te"))

@@ -1,0 +1,40 @@
+name: Build swap payload
+
+# Rebuilds romfs/TegraExplorer.bin: stock TegraExplorer 4.2.0 plus
+# tools/tegraexplorer/autorun-no-wait.patch, which stops it waiting for a
+# button press before running sd:/startup.te. Run by hand, then commit the
+# artifact's TegraExplorer.bin into romfs/.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host tools
+        run: |
+          apt-get update -y
+          apt-get install -y --no-install-recommends build-essential python3 git
+
+      - name: Build patched TegraExplorer
+        run: |
+          git clone --depth 1 --branch 4.2.0 https://github.com/suchmememanyskill/TegraExplorer /tmp/te
+          cd /tmp/te
+          test "$(git rev-parse HEAD)" = eea372812721342df37f666a43de12c6489fb762
+          git apply "$GITHUB_WORKSPACE/tools/tegraexplorer/autorun-no-wait.patch"
+          make -j"$(nproc)"
+          ls -l output/
+          sha256sum output/TegraExplorer.bin | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TegraExplorer-autorun
+          path: /tmp/te/output/TegraExplorer.bin
+          retention-days: 3
