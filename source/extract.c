@@ -13,7 +13,7 @@
 
 #define EXTRACT_BUF_SIZE (256 * 1024)
 
-/* the four files whose versions must all match for the console to boot --
+/* the boot files whose versions must all match for the console to boot --
    these are the ones worth tracing in the log when an update goes wrong */
 static bool is_boot_critical(const char *name) {
     return strstr(name, "package3") || strstr(name, "stratosphere.romfs")
@@ -21,7 +21,9 @@ static bool is_boot_critical(const char *name) {
 }
 
 /* The version-matched boot set (package3, stratosphere.romfs,
-   reboot_payload.bin, root fusee.bin) is ALWAYS staged as .ab_new and never
+   reboot_payload.bin, and every fusee.bin -- the SD root on unpatched
+   consoles, bootloader/payloads/ on mod-chipped) is ALWAYS staged as .ab_new
+   and never
    written in place -- even the ones that aren't locked. They only flip
    together in the pre-HOS swap payload (startup.te). This is what makes a
    failed update non-bricking: until the swap runs, the whole old set is intact
@@ -57,7 +59,7 @@ static bool should_preserve(const char *entry_path,
 }
 
 int ensureDirForFile(const char *filepath) {
-    char tmp[512];
+    char tmp[1024];   /* full_path is 1024 too; a shorter copy truncates the dirs */
     snprintf(tmp, sizeof(tmp), "%s", filepath);
 
     for (char *p = tmp + 1; *p; p++) {

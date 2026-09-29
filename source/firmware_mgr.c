@@ -3,7 +3,7 @@
 #include "extract.h"
 #include "pending.h"
 #include "payload_swap.h"
-#include "cfw_detect.h"
+#include "erpt_cleanup.h"
 #include "config.h"
 #include "applog.h"
 #include <cJSON.h>
@@ -220,7 +220,8 @@ int fwMgrLaunchDaybreak(void) {
     /* package3 / stratosphere.romfs are locked while Atmosphère runs and can't
        be swapped in-session -- proven by the logs. If any boot file is staged,
        prepare the pre-HOS swap: write sd:/startup.te and load TegraExplorer.
-       The actual arm (smExit + bpc) happens dead-last in main(), so Daybreak's
+       On Erista the arm (smExit + bpc) happens dead-last in main(); on Mariko
+       swapPrepare() arms hekate to autoboot it. Either way Daybreak's
        post-install reboot lands in TegraExplorer, which renames the .ab_new
        files into place and chainloads the now-consistent CFW.
 
@@ -232,13 +233,6 @@ int fwMgrLaunchDaybreak(void) {
        CFW set only boots the OLD firmware -- letting Daybreak install a newer
        one on top leaves fusee failing with "Unable to identify package1!". */
     if (swapPending()) {
-        CfwInfo cfw;
-        detectCfwInfo(&cfw);
-        if (cfw.is_mariko) {
-            appLog("ERROR: staged CFW boot files on Mariko (no pre-HOS swap) -- "
-                   "refusing Daybreak handoff; finish the CFW update via PC first");
-            return FW_LAUNCH_CFW_STAGED;
-        }
         appLog("staged CFW boot files present -- arming pre-HOS swap payload");
         if (swapPrepare() != 0) {
             appLog("ERROR: could not prepare swap payload -- refusing Daybreak handoff");
@@ -249,6 +243,10 @@ int fwMgrLaunchDaybreak(void) {
         pendingApply();
         appLog("no staged boot files; normal handoff");
     }
+
+    /* Daybreak's reboot must not stall at the logo while Atmosphère clears
+       saved error reports itself (see erpt_cleanup.c) */
+    erptCleanupReports();
 
     /* flush everything (startup.te, sidecars, pending list) before we lose
        control -- fsdev never commits on its own. */

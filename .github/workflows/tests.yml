@@ -1,0 +1,18 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  hekate-ini:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: hekate_ipl.ini arming against a model of hekate's parser
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+            -Iinclude tests/hekate_ini_test.c source/hekate_ini.c -o ini_test
+          ./ini_test

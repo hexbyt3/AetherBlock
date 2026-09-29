@@ -316,12 +316,16 @@ static void handleFwManager(InputState *input) {
                        this does not return. */
                     uiShowToast(&s_ui, "Finalizing CFW update, rebooting...", TOAST_INFO);
                     uiRender(&s_ui, &s_hosts);
-                    cfwMgrReboot(s_ui.cfw_mgr.is_mariko);
-                    uiShowToast(&s_ui, "Reboot failed", TOAST_ERROR);
+                    if (cfwMgrReboot(s_ui.cfw_mgr.is_mariko) == CFW_REBOOT_SWAP_FAILED)
+                        uiShowToast(&s_ui, "Couldn't set up the CFW swap -- see last_error.log", TOAST_ERROR);
+                    else
+                        uiShowToast(&s_ui, "Reboot failed", TOAST_ERROR);
                 } else {
                     fwMgrStartDownload(fm);
                 }
             } else if (fm->state == FW_STATE_DONE) {
+                uiShowToast(&s_ui, "Preparing the reboot...", TOAST_INFO);
+                uiRender(&s_ui, &s_hosts);
                 int lrc = fwMgrLaunchDaybreak();
                 if (lrc == 0) {
                     s_hosts.dirty = false;
@@ -425,9 +429,12 @@ int main(int argc, char *argv[]) {
 
     /* once a swap has fully landed there are no .ab_new sidecars left; drop the
        stray startup.te so a later manual TegraExplorer boot can't re-trigger a
-       chainload. While a swap is still pending we leave it in place. */
-    if (!swapPending())
+       chainload, and make sure hekate is no longer armed to autoboot the swap
+       payload. While a swap is still pending we leave all of it in place. */
+    if (!swapPending()) {
         remove(STARTUP_TE_PATH);
+        swapDisarmHekate();
+    }
 
     downloadGlobalInit();
 
@@ -499,13 +506,14 @@ int main(int argc, char *argv[]) {
     romfsExit();
 
     /* If a CFW update staged boot files that can't be swapped in-session,
-       swapPrepare() loaded the swap payload before romfs was torn down. Arm it
-       now -- dead-last, because swapArm() calls smExit() and nothing else may
-       touch sm afterward. We pass reboot_now=false: we've set Daybreak as the
-       next load, so its post-install reboot lands in the swap payload. If no
-       swap was prepared this is a no-op. If arming fails, Daybreak must not
-       run: its reboot would replay the old in-memory fusee against the new
-       firmware ("Unable to identify package1!"). */
+       swapPrepare() loaded the swap payload before romfs was torn down. On
+       Erista arm it now -- dead-last, because swapArm() calls smExit() and
+       nothing else may touch sm afterward. We pass reboot_now=false: we've set
+       Daybreak as the next load, so its post-install reboot lands in the swap
+       payload. If arming fails, Daybreak must not run: its reboot would replay
+       the old in-memory fusee against the new firmware ("Unable to identify
+       package1!"). On Mariko hekate was already armed in swapPrepare() and
+       swapArm() just returns 0. If no swap was prepared this is a no-op. */
     if (swapIsPrepared() && swapArm(false) != 0)
         fwMgrCancelDaybreak();
 

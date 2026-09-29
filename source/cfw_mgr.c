@@ -3,6 +3,7 @@
 #include "extract.h"
 #include "pending.h"
 #include "payload_swap.h"
+#include "erpt_cleanup.h"
 #include "cfw_detect.h"
 #include "config.h"
 #include "applog.h"
@@ -216,12 +217,18 @@ int cfwMgrReboot(bool is_mariko) {
     /* If a CFW update left boot files staged (package3 etc. can't be swapped
        while Atmosphère runs), reboot into the swap payload instead of a normal
        reboot: it renames the .ab_new files in place pre-HOS and chainloads the
-       now-consistent CFW. swapArm(true) calls smExit() and reboots, so it does
-       not return on success. On Mariko or any failure it returns and we fall
-       through to a normal reboot -- the old, matched set is still in place, so
-       that just boots the old CFW (no brick). */
-    if (!is_mariko && swapPending() && swapPrepare() == 0)
+       now-consistent CFW. On Erista swapArm(true) calls smExit() and reboots,
+       so it does not return on success. On Mariko swapPrepare() arms hekate
+       and swapArm() returns, so the plain reboot below lands in the payload.
+       If the swap can't be prepared we don't reboot at all: the user asked to
+       finalize, and a plain reboot would quietly come back on the old CFW. */
+    erptCleanupReports();
+
+    if (swapPending()) {
+        if (swapPrepare() != 0)
+            return CFW_REBOOT_SWAP_FAILED;
         swapArm(true);
+    }
 
     /* swap any ordinary (non-boot) files staged as .ab_new, then flush --
        fsdev doesn't commit on its own. */

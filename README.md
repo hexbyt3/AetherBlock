@@ -105,7 +105,7 @@ One guided flow updates both your CFW and firmware with a single reboot at the e
 4. Press **A** to fetch the Nintendo firmware list, pick the version you want, and press **A** to download
 5. When extraction finishes, press **A** to launch Daybreak
 6. In Daybreak: **Continue**, accept the default options, and let it install
-7. When Daybreak finishes, tap **Reboot** — Atmosphere's reboot-to-payload kicks in and the Switch comes back up on the new CFW and firmware
+7. When Daybreak finishes, tap **Reboot** — the Switch comes back up on the new CFW and firmware (unpatched consoles via Atmosphere's reboot-to-payload, mod-chipped ones through hekate; see below)
 
 That's it. No PC, no RCM jig, no manual file management.
 
@@ -130,9 +130,13 @@ Extracting the CFW package just places files on the SD card; it doesn't touch th
 3. The single reboot — Daybreak's post-install reboot, or AetherBlock's own for a CFW-only update — lands in TegraExplorer instead of fusee. Before any menu is drawn, `startup.te` renames each `.ab_new` into place (now unlocked, because HOS hasn't booted) and chainloads the now-consistent CFW.
 4. If anything goes wrong — arming fails, the payload is missing, power is lost — the old set is still intact, so the console simply boots the **old** CFW and the `.ab_new` files wait for a retry. A new fusee never meets an old `package3`, so this path **cannot brick**.
 
+**Mod-chipped (Mariko) consoles** have no reboot-to-payload, but the mod chip always boots hekate, so step 2 is done through hekate instead: AetherBlock copies TegraExplorer to `bootloader/payloads/AetherBlockSwap.bin`, saves `bootloader/hekate_ipl.ini` as `hekate_ipl.ini.ab_hkbak`, and points the live ini's `autoboot` at a new `[AetherBlock Swap]` entry. On the next reboot hekate starts TegraExplorer, whose `startup.te` swaps the boot set, puts the saved `hekate_ipl.ini` back **last** (so a power cut mid-swap just retries on the next boot) and chainloads hekate. The ini is only armed if `[config]` is its first entry and every line fits hekate's 511-byte line reader; `tests/hekate_ini_test.c` checks the rewrite against a model of hekate's own parser. Holding **VOL-** at hekate's boot logo skips the autoboot if you ever need the menu.
+
+**Saved error reports.** Atmosphere writes every error report to `atmosphere/erpt_reports` on the SD card (there is no setting to stop it), and a bot collects hundreds a day. At boot, once that folder holds 1000+ reports, Atmosphere deletes all of them before the system finishes starting, and the console sits at the Nintendo logo until it's done; with a few thousand reports that looks exactly like a hang. AetherBlock clears the folder before every reboot it triggers.
+
 libnx also never flushes SD writes on its own (`fclose` only fills the FS cache), so AetherBlock calls `fsdevCommitDevice("sdmc")` after extraction, after writing `startup.te`, and on every log line, to guarantee everything is physically on the card before the reboot.
 
-The bundled `romfs/TegraExplorer.bin` is the stock [TegraExplorer](https://github.com/suchmememanyskill/TegraExplorer) v4.2.0 release (GPL-2.0) by suchmememanyskill — used unmodified; it auto-runs `sd:/startup.te` on boot.
+The bundled `romfs/TegraExplorer.bin` is [TegraExplorer](https://github.com/suchmememanyskill/TegraExplorer) v4.2.0 (GPL-2.0) by suchmememanyskill, **modified** by `tools/tegraexplorer/autorun-no-wait.patch`: when `sd:/startup.te` exists it skips key derivation, never waits for a button on an error screen, and powers off instead of opening the menu if the script fails, so an unattended swap can't stall. It is built by the `Build swap payload` workflow from the pinned 4.2.0 source; the patch is the complete source of the changes.
 
 ## Building
 

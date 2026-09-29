@@ -34,6 +34,8 @@ typedef struct {
 void cfwMgrInit(CfwPackageManager *cm);
 void cfwMgrStartFetch(CfwPackageManager *cm);
 void cfwMgrStartDownload(CfwPackageManager *cm);
+#define CFW_REBOOT_SWAP_FAILED  -2   /* staged boot files, swap couldn't be armed */
+
 int  cfwMgrReboot(bool is_mariko);
 
 #endif

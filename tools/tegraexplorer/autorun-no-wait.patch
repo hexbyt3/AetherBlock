@@ -1,23 +1,112 @@
 diff --git a/source/main.c b/source/main.c
-index a6a62ec..bee3175 100644
+index a6a62ec..85256f8 100644
 --- a/source/main.c
 +++ b/source/main.c
-@@ -286,13 +286,16 @@ void ipl_main()
+@@ -48,6 +48,7 @@
+ #include "tegraexplorer/mainmenu.h"
+ #include "tegraexplorer/tconf.h"
+ #include "err.h"
++#include "script/scriptError.h"
+ #include <soc/pmc.h>
+ #include "keys/keys.h"
+ #include "keys/keyfile.h"
+@@ -220,6 +221,12 @@ static inline void _show_errors()
+ 
+ 			// Clear the exception.
+ 			*excp_enabled = 0;
++			// AetherBlock: an unattended run that crashed shows the exception
++			// briefly and powers off -- retrying would crash in a tight loop.
++			if (scriptUnattended) {
++				msleep(3000);
++				power_set_state(POWER_OFF_RESET);
++			}
+ 			DrawError(newErrCode(exception));
+ 		}
+ 	}
+@@ -247,6 +254,11 @@ void ipl_main()
+ 	// Mount SD Card.
+ 	h_cfg.errors |= !sd_mount() ? ERR_SD_BOOT_EN : 0;
+ 
++	// AetherBlock: sd:/startup.te means an unattended run (a pre-boot file swap).
++	// It must never stop for input: skip key derivation (the script only needs
++	// the SD card), every error screen and the menu.
++	scriptUnattended = f_stat("sd:/startup.te", NULL) == FR_OK;
++
+ 	TConf.minervaEnabled = !minerva_init();
+ 	TConf.FSBuffSize = (TConf.minervaEnabled) ? 0x800000 : 0x10000;
+ 
+@@ -281,12 +293,14 @@ void ipl_main()
+ 
+ 	int res = -1;
+ 
+-	if (btn_read() & BTN_VOL_DOWN || DumpKeys())
++	if (scriptUnattended)
++		res = 1;
++	else if (btn_read() & BTN_VOL_DOWN || DumpKeys())
+ 		res = GetKeysFromFile("sd:/switch/prod.keys");
  
  	TConf.keysDumped = (res > 0) ? 0 : 1;
  
 -	if (res > 0)
-+	// AetherBlock: an unattended startup.te run must never stop for input.
-+	bool autorun = FileExists("sd:/startup.te");
-+
-+	if (res > 0 && !autorun)
++	if (res > 0 && !scriptUnattended)
  		DrawError(newErrCode(TE_ERR_KEYDUMP_FAIL));
  	
  	if (TConf.keysDumped)
- 		SetKeySlots();
- 	
--	if (res == 0)
-+	if (res == 0 && !autorun)
+@@ -295,8 +309,12 @@ void ipl_main()
+ 	if (res == 0)
  		hidWait();
  
- 	if (FileExists("sd:/startup.te"))
+-	if (FileExists("sd:/startup.te"))
++	if (scriptUnattended) {
+ 		RunScript("sd:/", newFSEntry("startup.te"));
++		// The script chainloads on success; landing back here means it failed.
++		// Power off rather than wait in the menu.
++		power_set_state(POWER_OFF_RESET);
++	}
+ 
+ 	EnterMainMenu();
+ 
+diff --git a/source/script/scriptError.c b/source/script/scriptError.c
+index 421bccb..768621b 100644
+--- a/source/script/scriptError.c
++++ b/source/script/scriptError.c
+@@ -2,9 +2,13 @@
+ #include "compat.h"
+ #include <stdarg.h>
+ #include "../hid/hid.h"
++#ifndef WIN32
++#include <utils/util.h>
++#endif
+ 
+ s64 scriptCurrentLine;
+ u8 scriptLastError = 0;
++bool scriptUnattended = false;
+ 
+ void printScriptError(u8 errLevel, char* message, ...) {
+ 	va_list args;
+@@ -16,6 +20,9 @@ void printScriptError(u8 errLevel, char* message, ...) {
+ 		gfx_printf("\nError occured on or near line %d\n", (u32)scriptCurrentLine);
+ 	va_end(args);
+ 	#ifndef WIN32
+-		hidWait();
++		if (scriptUnattended)
++			msleep(3000);
++		else
++			hidWait();
+ 	#endif
+ }
+\ No newline at end of file
+diff --git a/source/script/scriptError.h b/source/script/scriptError.h
+index 8b4d74f..d6bd9e7 100644
+--- a/source/script/scriptError.h
++++ b/source/script/scriptError.h
+@@ -12,6 +12,9 @@ enum {
+ extern s64 scriptCurrentLine;
+ extern u8 scriptLastError;
+ 
++// AetherBlock: set for an unattended sd:/startup.te run -- errors never wait for input.
++extern bool scriptUnattended;
++
+ void printScriptError(u8 errLevel, char* message, ...);
+ 
+ #define SCRIPT_FATAL_ERR(message, ...) printScriptError(SCRIPT_FATAL, message, ##__VA_ARGS__); return NULL
