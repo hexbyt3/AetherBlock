@@ -99,7 +99,7 @@ Result sysSettingsLoad(SysSettingsFile *sf) {
     sf->file_existed = true;
     char line[SYS_SETTINGS_MAX_LINE];
     while (fgets(line, sizeof(line), f) && sf->line_count < SYS_SETTINGS_MAX_LINES) {
-        strncpy(sf->lines[sf->line_count], line, SYS_SETTINGS_MAX_LINE - 1);
+        snprintf(sf->lines[sf->line_count], SYS_SETTINGS_MAX_LINE, "%s", line);
         trimRight(sf->lines[sf->line_count]);
         sf->line_count++;
     }
@@ -228,8 +228,7 @@ static void insertLine(SysSettingsFile *sf, int at, const char *content) {
     for (int i = sf->line_count; i > at; i--)
         memcpy(sf->lines[i], sf->lines[i - 1], SYS_SETTINGS_MAX_LINE);
 
-    strncpy(sf->lines[at], content, SYS_SETTINGS_MAX_LINE - 1);
-    sf->lines[at][SYS_SETTINGS_MAX_LINE - 1] = '\0';
+    snprintf(sf->lines[at], SYS_SETTINGS_MAX_LINE, "%s", content);
     sf->line_count++;
 }
 
@@ -246,7 +245,7 @@ void sysSettingsToggle(SysSettingsFile *sf, int index) {
 
     int line_idx = findKeyLine(sf, def->section, def->key);
     if (line_idx >= 0) {
-        strncpy(sf->lines[line_idx], new_line, SYS_SETTINGS_MAX_LINE - 1);
+        snprintf(sf->lines[line_idx], SYS_SETTINGS_MAX_LINE, "%s", new_line);
     } else {
         if (sf->line_count > SYS_SETTINGS_MAX_LINES - 3)
             return;

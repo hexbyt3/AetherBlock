@@ -424,7 +424,7 @@ static void drawNetTestScreen(UIState *ui) {
     fillRect(ui->renderer, 0, TITLE_BAR_HEIGHT - 1, SCREEN_WIDTH, 1, COL_ACCENT_DIM);
     drawText(ui->renderer, ui->font_title, "Server Connectivity Test", 30, 16, COL_ACCENT);
 
-    char progress[64];
+    char progress[96];
     if (ui->net_test.running) {
         snprintf(progress, sizeof(progress), "Testing %d / %d ...",
                  ui->net_test.current + 1, ui->net_test.count);
