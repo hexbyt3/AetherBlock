@@ -109,6 +109,10 @@ One guided flow updates both your CFW and firmware with a single reboot at the e
 
 That's it. No PC, no RCM jig, no manual file management.
 
+### Updating AetherBlock Itself
+
+AetherBlock updates itself through the CFW Package Updater: the package carries the newest AetherBlock, which is staged next to the running copy and swapped in the next time you open the app. The copy you already have is the one that performs that update, so if you are more than one release behind, install the CFW package, **exit and reopen AetherBlock**, then continue to the Firmware Manager. That way the firmware step always runs on the newest AetherBlock.
+
 ### Why CFW First?
 
 Atmosphere has to be updated before the reboot that loads the new firmware. New Atmosphere releases add support for new Nintendo firmware versions — if only the firmware gets installed and the old Atmosphere is still on the SD card at boot, it won't be able to launch CFW.
