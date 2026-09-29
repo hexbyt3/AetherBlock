@@ -31,10 +31,14 @@ jobs:
           git apply "$GITHUB_WORKSPACE/tools/tegraexplorer/autorun-no-wait.patch"
           make -j"$(nproc)"
           ls -l output/
-          sha256sum output/TegraExplorer.bin | tee -a "$GITHUB_STEP_SUMMARY"
+          # Ship the compressed build, as upstream's own release does: the
+          # full one is too big for the 0x24000-byte bpc reboot payload.
+          cp output/TegraExplorer_small.bin /tmp/TegraExplorer.bin
+          test "$(stat -c %s /tmp/TegraExplorer.bin)" -le 147456
+          sha256sum /tmp/TegraExplorer.bin | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
           name: TegraExplorer-autorun
-          path: /tmp/te/output/TegraExplorer.bin
+          path: /tmp/TegraExplorer.bin
           retention-days: 3
