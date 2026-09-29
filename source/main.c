@@ -409,13 +409,16 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
+    /* finish any CFW file swaps that were staged before the last reboot
+       (package3, stratosphere.romfs, AetherBlock.nro, etc.). This must run
+       before romfsInit(): mounting romfs holds our own .nro open for the life
+       of the process, and an open file can't be renamed, so a staged
+       AetherBlock.nro would never swap in. */
+    pendingApply();
+
     romfsInit();
     plInitialize(PlServiceType_User);
     socketInitializeDefault();
-
-    /* finish any CFW file swaps that were staged before the last reboot
-       (package3, stratosphere.romfs, AetherBlock.nro, etc.) */
-    pendingApply();
 
     /* wipe staged /firmware/ dir if we handed off to Daybreak last run */
     fwMgrCleanupIfPending();
