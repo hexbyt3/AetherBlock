@@ -322,10 +322,13 @@ static void handleFwManager(InputState *input) {
                     fwMgrStartDownload(fm);
                 }
             } else if (fm->state == FW_STATE_DONE) {
-                if (fwMgrLaunchDaybreak() == 0) {
+                int lrc = fwMgrLaunchDaybreak();
+                if (lrc == 0) {
                     s_hosts.dirty = false;
                     s_exit_requested = true;
                     return;
+                } else if (lrc == FW_LAUNCH_CFW_STAGED) {
+                    uiShowToast(&s_ui, "Finish the CFW update before installing firmware", TOAST_ERROR);
                 } else {
                     uiShowToast(&s_ui, "Daybreak not found at /switch/daybreak.nro", TOAST_ERROR);
                 }
@@ -497,9 +500,11 @@ int main(int argc, char *argv[]) {
        now -- dead-last, because swapArm() calls smExit() and nothing else may
        touch sm afterward. We pass reboot_now=false: we've set Daybreak as the
        next load, so its post-install reboot lands in the swap payload. If no
-       swap was prepared this is a no-op. */
-    if (swapIsPrepared())
-        swapArm(false);
+       swap was prepared this is a no-op. If arming fails, Daybreak must not
+       run: its reboot would replay the old in-memory fusee against the new
+       firmware ("Unable to identify package1!"). */
+    if (swapIsPrepared() && swapArm(false) != 0)
+        fwMgrCancelDaybreak();
 
     return 0;
 }

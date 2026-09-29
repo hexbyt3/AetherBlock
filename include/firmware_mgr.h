@@ -38,7 +38,16 @@ typedef struct {
 void fwMgrInit(FirmwareManager *fm, const char *current_fw);
 void fwMgrStartFetch(FirmwareManager *fm);
 void fwMgrStartDownload(FirmwareManager *fm);
+#define FW_LAUNCH_NO_DAYBREAK  -1
+#define FW_LAUNCH_CFW_STAGED   -2   /* staged CFW can't be finalized first */
+
+/* Hand off to Daybreak. Returns 0, or a FW_LAUNCH_* error; refuses when a
+   staged CFW update couldn't be guaranteed to swap in on Daybreak's reboot. */
 int  fwMgrLaunchDaybreak(void);
+
+/* Undo a handoff (next load back to hbmenu, keep /firmware/). Makes no
+   service calls, so it's safe after swapArm() has closed sm. */
+void fwMgrCancelDaybreak(void);
 
 /* If a "firmware cleanup pending" marker was left behind by a previous
    launch of Daybreak, wipe the staged /firmware/ directory and clear

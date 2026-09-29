@@ -3,6 +3,7 @@
 #include "extract.h"
 #include "pending.h"
 #include "payload_swap.h"
+#include "cfw_detect.h"
 #include "config.h"
 #include "applog.h"
 #include <cJSON.h>
@@ -212,7 +213,7 @@ void fwMgrStartDownload(FirmwareManager *fm) {
 int fwMgrLaunchDaybreak(void) {
     struct stat st;
     if (stat(DAYBREAK_PATH, &st) != 0)
-        return -1;
+        return FW_LAUNCH_NO_DAYBREAK;
 
     appLogSection("DAYBREAK HANDOFF");
 
@@ -225,12 +226,24 @@ int fwMgrLaunchDaybreak(void) {
 
        We deliberately do NOT pendingApply() here: the locked files can't swap
        anyway, and force-staged reboot_payload.bin must stay old until the
-       payload flips the whole set at once (that's what prevents a brick). */
+       payload flips the whole set at once.
+
+       If the swap can't be guaranteed we refuse the handoff outright. The old
+       CFW set only boots the OLD firmware -- letting Daybreak install a newer
+       one on top leaves fusee failing with "Unable to identify package1!". */
     if (swapPending()) {
+        CfwInfo cfw;
+        detectCfwInfo(&cfw);
+        if (cfw.is_mariko) {
+            appLog("ERROR: staged CFW boot files on Mariko (no pre-HOS swap) -- "
+                   "refusing Daybreak handoff; finish the CFW update via PC first");
+            return FW_LAUNCH_CFW_STAGED;
+        }
         appLog("staged CFW boot files present -- arming pre-HOS swap payload");
-        if (swapPrepare() != 0)
-            appLog("WARNING: could not arm swap payload; CFW will stay on the "
-                   "old version (no brick) -- finish via PC if needed");
+        if (swapPrepare() != 0) {
+            appLog("ERROR: could not prepare swap payload -- refusing Daybreak handoff");
+            return FW_LAUNCH_CFW_STAGED;
+        }
     } else {
         /* nothing locked this time -- apply any ordinary staged swaps */
         pendingApply();
@@ -246,7 +259,7 @@ int fwMgrLaunchDaybreak(void) {
     char args[256];
     snprintf(args, sizeof(args), "\"%s\" \"%s\"", DAYBREAK_PATH, FIRMWARE_EXTRACT_PATH);
     Result rc = envSetNextLoad(DAYBREAK_PATH, args);
-    if (R_FAILED(rc)) return -1;
+    if (R_FAILED(rc)) return FW_LAUNCH_NO_DAYBREAK;
 
     /* drop a marker so the next launch of AetherBlock knows to wipe
        /firmware/. we only do this on a successful handoff to Daybreak. */
@@ -255,6 +268,12 @@ int fwMgrLaunchDaybreak(void) {
     if (marker) fclose(marker);
 
     return 0;
+}
+
+void fwMgrCancelDaybreak(void) {
+    envSetNextLoad(HBMENU_PATH, "\"" HBMENU_PATH "\"");
+    remove(FW_CLEANUP_MARKER_PATH);
+    fsdevCommitDevice("sdmc");
 }
 
 void fwMgrCleanupIfPending(void) {

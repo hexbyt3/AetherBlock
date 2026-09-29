@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #define APP_NAME            "AetherBlock"
-#define APP_VERSION         "2.1.1"
+#define APP_VERSION         "2.1.2"
 #define APP_AUTHOR          "HeXbyt3"
 
 #define HOSTS_MAX_ENTRIES   256
@@ -38,6 +38,7 @@
 #define CFW_ASSET_MARIKO       "mod-chipped"
 #define CFW_ASSET_ERISTA       "unpatched"
 #define DAYBREAK_PATH          "/switch/daybreak.nro"
+#define HBMENU_PATH            "/hbmenu.nro"
 #define AETHERBLOCK_CONFIG_DIR "/config/AetherBlock/"
 #define FW_CLEANUP_MARKER_PATH "/config/AetherBlock/fw_cleanup_pending"
 
