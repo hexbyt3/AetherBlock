@@ -60,8 +60,8 @@ NEW!  Firmware & CFW Updates
 ### Firmware Manager
 - Download Nintendo firmware (HOS) directly from the Switch
 - Browse available firmware versions and select the one you need
-- Downloads and extracts firmware, then hands off to Daybreak for installation
-- No PC required -- download, extract, and install all from the homebrew menu
+- Downloads firmware over three connections at once, straight into `/firmware/` with every file checksum-verified, then hands off to Daybreak for installation
+- No PC required -- download and install all from the homebrew menu
 
 ### CFW Package Updater
 - Downloads the latest [CFW4SysBots](https://github.com/hexbyt3/CFW4SysBots) package directly from GitHub
@@ -103,7 +103,7 @@ One guided flow updates both your CFW and firmware with a single reboot at the e
 2. Press **A** to check for the latest CFW4SysBots package, then **A** again to download and install it
 3. When extraction finishes, press **A** — AetherBlock jumps straight to the Firmware Manager for you
 4. Press **A** to fetch the Nintendo firmware list, pick the version you want, and press **A** to download
-5. When extraction finishes, press **A** to launch Daybreak
+5. When the download finishes, press **A** to launch Daybreak
 6. In Daybreak: **Continue**, accept the default options, and let it install
 7. When Daybreak finishes, tap **Reboot** — the Switch comes back up on the new CFW and firmware (unpatched consoles via Atmosphere's reboot-to-payload, mod-chipped ones through hekate; see below)
 

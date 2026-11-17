@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   hekate-ini:
@@ -16,3 +17,45 @@ jobs:
           cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
             -Iinclude tests/hekate_ini_test.c source/hekate_ini.c -o ini_test
           ./ini_test
+
+  zip-stream:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Streaming unzip against hand-built archives
+        run: |
+          cc -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+            -Iinclude tests/zip_stream_test.c source/zip_stream.c -lz -o zs_test
+          ./zs_test
+
+  stream-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the downloader for the runner
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libcurl4-openssl-dev zlib1g-dev
+          cc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=thread \
+            -Itests/stubs -Iinclude -Ilib \
+            tests/stream_e2e.c source/stream_fetch.c source/zip_stream.c \
+            source/download.c lib/cJSON.c -lcurl -lz -lpthread -o stream_e2e
+
+      - name: Download the newest firmware package both ways and compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r url size < <(gh api 'repos/THZoria/NX_Firmware/releases?per_page=1' \
+            --jq '.[0].assets[] | select(.name | endswith(".zip")) | "\(.browser_download_url) \(.size)"' | head -1)
+          echo "package: $url ($size bytes)"
+
+          start=$(date +%s)
+          ./stream_e2e "$url" "$size" streamed/
+          echo "streamed in $(( $(date +%s) - start )) s"
+
+          curl -sSL --retry 3 -o firmware.zip "$url"
+          mkdir reference && unzip -q firmware.zip -d reference
+          diff -r reference streamed
+          echo "$(find streamed -type f | wc -l) files identical to unzip"

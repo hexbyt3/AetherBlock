@@ -422,7 +422,13 @@ int main(int argc, char *argv[]) {
 
     romfsInit();
     plInitialize(PlServiceType_User);
-    socketInitializeDefault();
+    /* libnx's default receive window tops out at 256 KB, which caps every
+       connection well below what the link can carry */
+    SocketInitConfig sock = *socketGetDefaultInitConfig();
+    sock.tcp_rx_buf_size     = 512 * 1024;
+    sock.tcp_rx_buf_max_size = 2 * 1024 * 1024;
+    if (R_FAILED(socketInitialize(&sock)))
+        socketInitializeDefault();
 
     /* wipe staged /firmware/ dir if we handed off to Daybreak last run */
     fwMgrCleanupIfPending();

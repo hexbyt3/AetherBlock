@@ -4,6 +4,7 @@
 #include <curl/curl.h>
 #include <cJSON.h>
 #include <switch.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -53,7 +54,7 @@ static int progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
     return 0;
 }
 
-static CURL *make_curl(const char *url) {
+CURL *downloadMakeCurl(const char *url) {
     CURL *curl = curl_easy_init();
     if (!curl) return NULL;
 
@@ -65,6 +66,9 @@ static CURL *make_curl(const char *url) {
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
     curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 256 * 1024L);
+    /* no overall time limit, but a transfer that crawls for 30 s is dead */
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 4096L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
 
     return curl;
 }
@@ -90,7 +94,7 @@ static int download_once(const char *url, const char *output_path,
 
     FileWriteCtx ctx = { .fp = fp, .cb = cb, .userdata = userdata };
 
-    CURL *curl = make_curl(url);
+    CURL *curl = downloadMakeCurl(url);
     if (!curl) {
         fclose(fp);
         remove(output_path);
@@ -172,11 +176,13 @@ int downloadFileChecked(const char *url, const char *output_path,
     return -1;
 }
 
-int downloadToMemory(const char *url, char **out_buf, size_t *out_len) {
+static int fetch_to_memory(const char *url, const char *range,
+                           char **out_buf, size_t *out_len,
+                           char *final_url, size_t final_url_size) {
     MemBuf m = { .buf = malloc(4096), .len = 0, .cap = 4096 };
     if (!m.buf) return -1;
 
-    CURL *curl = make_curl(url);
+    CURL *curl = downloadMakeCurl(url);
     if (!curl) {
         free(m.buf);
         return -1;
@@ -184,13 +190,22 @@ int downloadToMemory(const char *url, char **out_buf, size_t *out_len) {
 
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_mem_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &m);
+    if (range) curl_easy_setopt(curl, CURLOPT_RANGE, range);
 
     CURLcode res = curl_easy_perform(curl);
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    if (final_url && final_url_size) {
+        char *eff = NULL;
+        curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &eff);
+        snprintf(final_url, final_url_size, "%s", eff ? eff : url);
+    }
     curl_easy_cleanup(curl);
 
-    if (res != CURLE_OK || http_code < 200 || http_code >= 400) {
+    /* a ranged request only counts if the server honored the range */
+    bool ok = res == CURLE_OK &&
+              (range ? http_code == 206 : (http_code >= 200 && http_code < 400));
+    if (!ok) {
         free(m.buf);
         return -1;
     }
@@ -206,6 +221,16 @@ int downloadToMemory(const char *url, char **out_buf, size_t *out_len) {
     *out_buf = m.buf;
     *out_len = m.len;
     return 0;
+}
+
+int downloadToMemory(const char *url, char **out_buf, size_t *out_len) {
+    return fetch_to_memory(url, NULL, out_buf, out_len, NULL, 0);
+}
+
+int downloadRangeToMemory(const char *url, const char *range,
+                          char **out_buf, size_t *out_len,
+                          char *final_url, size_t final_url_size) {
+    return fetch_to_memory(url, range, out_buf, out_len, final_url, final_url_size);
 }
 
 int fetchJson(const char *url, cJSON **out_json) {

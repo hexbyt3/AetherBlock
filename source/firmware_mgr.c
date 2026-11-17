@@ -1,5 +1,6 @@
 #include "firmware_mgr.h"
 #include "download.h"
+#include "stream_fetch.h"
 #include "extract.h"
 #include "pending.h"
 #include "payload_swap.h"
@@ -39,6 +40,8 @@ static int packVersion(const char *s) {
         return -1;
     return (int)((maj << 16) | (min << 8) | mic);
 }
+
+static void download_and_extract(FirmwareManager *fm, FirmwareEntry *entry);
 
 static void *fetch_worker(void *arg) {
     FirmwareManager *fm = arg;
@@ -121,6 +124,32 @@ static void *fetch_worker(void *arg) {
     return NULL;
 }
 
+/* Fast path: several connections at once, files written straight into
+   /firmware/ with no zip on the card and no extract pass afterward. */
+static bool stream_firmware(FirmwareManager *fm, const FirmwareEntry *entry) {
+    char reason[160];
+    u64 t0 = armGetSystemTick();
+
+    removeDir(FIRMWARE_EXTRACT_PATH);
+    mkdir("/firmware", 0755);
+
+    if (streamFetchZip(entry->url, entry->size, FIRMWARE_EXTRACT_PATH,
+                       progress_cb, fm, reason, sizeof(reason)) != 0) {
+        appLog("stream download failed (%s) -- falling back to download + extract", reason);
+        removeDir(FIRMWARE_EXTRACT_PATH);
+        fm->progress = 0.0f;
+        return false;
+    }
+
+    double secs = (double)armTicksToNs(armGetSystemTick() - t0) / 1e9;
+    appLog("stream download ok: %lld bytes in %.1f s (%.1f MB/s)", entry->size, secs,
+           secs > 0 ? (double)entry->size / 1e6 / secs : 0.0);
+
+    /* a zip left behind by an older failed run is 340 MB of dead weight */
+    remove(FIRMWARE_DOWNLOAD_PATH);
+    return true;
+}
+
 static void *download_worker(void *arg) {
     FirmwareManager *fm = arg;
     FirmwareEntry *entry = &fm->entries[fm->selected];
@@ -131,6 +160,27 @@ static void *download_worker(void *arg) {
     appLog("firmware: %s  url: %s", entry->version, entry->url);
     appLog("expected size: %lld bytes", entry->size);
 
+    /* run the CPU at its boosted clock for the transfer; no-op where the
+       system refuses it */
+    appletSetCpuBoostMode(ApmCpuBoostMode_FastLoad);
+    bool streamed = stream_firmware(fm, entry);
+    if (!streamed)
+        download_and_extract(fm, entry);
+    appletSetCpuBoostMode(ApmCpuBoostMode_Normal);
+
+    if (streamed) {
+        fm->state = FW_STATE_DONE;
+        fm->progress = 1.0f;
+        snprintf(fm->status_text, sizeof(fm->status_text),
+                 "Firmware downloaded! Ready for Daybreak.");
+    }
+    fm->worker_active = false;
+    return NULL;
+}
+
+/* The original path, kept for packages or servers the fast path can't
+   handle: save the zip, then unpack it. Sets the final state itself. */
+static void download_and_extract(FirmwareManager *fm, FirmwareEntry *entry) {
     char reason[160];
     if (downloadFileChecked(entry->url, FIRMWARE_DOWNLOAD_PATH,
                             entry->size, DOWNLOAD_MAX_ATTEMPTS,
@@ -140,8 +190,7 @@ static void *download_worker(void *arg) {
                  "Download failed for firmware %s: %s", entry->version, reason);
         appLog("ERROR: firmware download failed after %d attempts: %s",
                DOWNLOAD_MAX_ATTEMPTS, reason);
-        fm->worker_active = false;
-        return NULL;
+        return;
     }
 
     fm->state = FW_STATE_EXTRACTING;
@@ -167,8 +216,7 @@ static void *download_worker(void *arg) {
         fm->state = FW_STATE_ERROR;
         snprintf(fm->error_text, sizeof(fm->error_text), "Extraction failed: %s", why);
         appLog("ERROR: firmware extraction aborted (code %d): %s", extract_errs, why);
-        fm->worker_active = false;
-        return NULL;
+        return;
     }
 
     remove(FIRMWARE_DOWNLOAD_PATH);
@@ -182,8 +230,6 @@ static void *download_worker(void *arg) {
     else
         snprintf(fm->status_text, sizeof(fm->status_text),
                  "Firmware extracted! Ready for Daybreak.");
-    fm->worker_active = false;
-    return NULL;
 }
 
 void fwMgrStartFetch(FirmwareManager *fm) {
