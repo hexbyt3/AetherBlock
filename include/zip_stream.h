@@ -50,6 +50,8 @@ typedef struct {
     char          *iobuf;
     size_t         iobuf_size;
     char           err[160];
+    long long      io_ns;     /* time spent creating, writing and closing files */
+    long long      crc_ns;    /* time spent checksumming */
 } ZsSink;
 
 /* Start consuming the bytes [entries[first].hdr_off, entries[last].end_off).

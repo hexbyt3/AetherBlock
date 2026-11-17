@@ -2,10 +2,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 #include <zlib.h>
 
 enum { PH_HEADER, PH_SKIP, PH_DATA, PH_GAP, PH_DONE };
+
+static long long now_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
 
 static uint16_t rd16(const unsigned char *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 static uint32_t rd32(const unsigned char *p) {
@@ -139,7 +146,10 @@ static void enter_gap(ZsSink *s, long long pos) {
 
 static int finish_entry(ZsSink *s) {
     const ZsEntry *z = &s->idx->entries[s->cur];
-    if (close_file(s) != 0) return fail(s, "write failed");
+    long long t0 = now_ns();
+    int closed = close_file(s);
+    s->io_ns += now_ns() - t0;
+    if (closed != 0) return fail(s, "write failed");
     if (s->crc != z->crc) {
         remove(s->path);
         return fail(s, "checksum mismatch");
@@ -163,6 +173,7 @@ static int begin_entry(ZsSink *s) {
         s->path[strlen(s->path) - 1] = '\0';
         mkdir(s->path, 0755);
     } else {
+        long long t0 = now_ns();
         s->fp = fopen(s->path, "wb");
         if (!s->fp) return fail(s, "cannot create");
         if (s->iobuf) setvbuf(s->fp, s->iobuf, _IOFBF, s->iobuf_size);
@@ -172,6 +183,7 @@ static int begin_entry(ZsSink *s) {
             int rc = ftruncate(fileno(s->fp), (off_t)z->size);
             (void)rc;
         }
+        s->io_ns += now_ns() - t0;
         s->crc = (uint32_t)crc32(0L, Z_NULL, 0);
     }
 
@@ -218,8 +230,12 @@ int zsSinkFeed(ZsSink *s, const unsigned char *data, size_t len) {
         } else {
             size_t n = (long long)len > s->left ? (size_t)s->left : len;
             if (s->phase == PH_DATA && n > 0) {
+                long long t0 = now_ns();
                 if (fwrite(data, 1, n, s->fp) != n) return fail(s, "write failed");
+                long long t1 = now_ns();
                 s->crc = (uint32_t)crc32(s->crc, data, (uInt)n);
+                s->io_ns += t1 - t0;
+                s->crc_ns += now_ns() - t1;
             }
             s->left -= (long long)n;
             data += n;

@@ -29,6 +29,7 @@ typedef struct {
 
     pthread_mutex_t lock;
     int            next_batch;
+    int            workers;
     long long      done_bytes;
     long long      total_bytes;
     bool           failed;
@@ -44,6 +45,12 @@ typedef struct {
     ZsSink    sink;
     long long batch_bytes;   /* counted toward progress in this attempt */
     bool      checked_status;
+
+    /* where the time went, for the log */
+    int       id;
+    long long bytes, chunks, requests, retries;
+    long long io_ns, crc_ns;
+    double    connect_secs;  /* TCP + TLS setup of the first request */
 } Worker;
 
 static void add_progress(Job *job, long long delta) {
@@ -97,6 +104,7 @@ static size_t write_cb(void *ptr, size_t size, size_t nmemb, void *ctx) {
     if (zsSinkFeed(&w->sink, ptr, bytes) != 0) return 0;
 
     w->batch_bytes += (long long)bytes;
+    w->chunks++;
     add_progress(w->job, (long long)bytes);
     return bytes;
 }
@@ -121,8 +129,16 @@ static bool fetch_batch(Worker *w, const Batch *b, char *iobuf,
         curl_easy_setopt(w->curl, CURLOPT_RANGE, range);
 
         CURLcode res = curl_easy_perform(w->curl);
-        if (res == CURLE_OK && zsSinkFinish(&w->sink) == 0)
+        w->io_ns += w->sink.io_ns;
+        w->crc_ns += w->sink.crc_ns;
+        w->requests++;
+        if (w->requests == 1)
+            curl_easy_getinfo(w->curl, CURLINFO_APPCONNECT_TIME, &w->connect_secs);
+        if (res == CURLE_OK && zsSinkFinish(&w->sink) == 0) {
+            w->bytes += w->batch_bytes;
             return true;
+        }
+        w->retries++;
 
         snprintf(why, why_size, "%s",
                  w->sink.err[0] ? w->sink.err : curl_easy_strerror(res));
@@ -138,6 +154,11 @@ static bool fetch_batch(Worker *w, const Batch *b, char *iobuf,
 static void *worker_main(void *arg) {
     Job *job = arg;
     Worker w = { .job = job };
+    u64 t0 = armGetSystemTick();
+
+    pthread_mutex_lock(&job->lock);
+    w.id = ++job->workers;
+    pthread_mutex_unlock(&job->lock);
 
     char *iobuf = malloc(STREAM_FILE_BUF);
     w.curl = downloadMakeCurl(job->direct_url);
@@ -159,6 +180,17 @@ static void *worker_main(void *arg) {
 
     if (w.curl) curl_easy_cleanup(w.curl);
     free(iobuf);
+
+    /* total = SD card + checksum + everything else, and everything else is
+       waiting on (and decrypting) the network */
+    double total = (double)armTicksToNs(armGetSystemTick() - t0) / 1e9;
+    double sd = (double)w.io_ns / 1e9, crc = (double)w.crc_ns / 1e9;
+    appLog("stream: conn %d: %.1f MB in %lld requests (%lld retried), %.1f s = "
+           "SD card %.1f s + checksum %.1f s + network %.1f s; "
+           "connect %.2f s, avg read %lld bytes",
+           w.id, (double)w.bytes / 1e6, w.requests, w.retries, total,
+           sd, crc, total - sd - crc, w.connect_secs,
+           w.chunks ? w.bytes / w.chunks : 0);
     return NULL;
 }
 
@@ -194,10 +226,13 @@ int streamFetchZip(const char *url, long long zip_size, const char *dest_dir,
     char direct_url[2048];
     char *tail = NULL;
     size_t got = 0;
+    u64 t0 = armGetSystemTick();
     if (downloadRangeToMemory(url, range, &tail, &got, direct_url, sizeof(direct_url)) != 0) {
         snprintf(reason, reason_size, "server does not allow partial downloads");
         return -1;
     }
+    appLog("stream: file list fetched in %.2f s",
+           (double)armTicksToNs(armGetSystemTick() - t0) / 1e9);
 
     ZsIndex idx;
     int parsed = (long long)got == tail_len

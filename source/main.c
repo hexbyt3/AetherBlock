@@ -409,6 +409,9 @@ static bool shouldQuit(InputState *input) {
     return false;
 }
 
+/* result of asking for the larger socket buffers; the firmware log reports it */
+Result g_socket_tune_rc;
+
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
@@ -427,7 +430,8 @@ int main(int argc, char *argv[]) {
     SocketInitConfig sock = *socketGetDefaultInitConfig();
     sock.tcp_rx_buf_size     = 512 * 1024;
     sock.tcp_rx_buf_max_size = 2 * 1024 * 1024;
-    if (R_FAILED(socketInitialize(&sock)))
+    g_socket_tune_rc = socketInitialize(&sock);
+    if (R_FAILED(g_socket_tune_rc))
         socketInitializeDefault();
 
     /* wipe staged /firmware/ dir if we handed off to Daybreak last run */

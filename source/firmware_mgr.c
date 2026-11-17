@@ -13,6 +13,8 @@
 #include <string.h>
 #include <sys/stat.h>
 
+extern Result g_socket_tune_rc;   /* main.c */
+
 static void progress_cb(size_t current, size_t total, void *userdata) {
     FirmwareManager *fm = userdata;
     if (total > 0)
@@ -132,6 +134,8 @@ static bool stream_firmware(FirmwareManager *fm, const FirmwareEntry *entry) {
 
     removeDir(FIRMWARE_EXTRACT_PATH);
     mkdir("/firmware", 0755);
+    appLog("stream: old /firmware/ cleared in %.1f s",
+           (double)armTicksToNs(armGetSystemTick() - t0) / 1e9);
 
     if (streamFetchZip(entry->url, entry->size, FIRMWARE_EXTRACT_PATH,
                        progress_cb, fm, reason, sizeof(reason)) != 0) {
@@ -162,7 +166,11 @@ static void *download_worker(void *arg) {
 
     /* run the CPU at its boosted clock for the transfer; no-op where the
        system refuses it */
-    appletSetCpuBoostMode(ApmCpuBoostMode_FastLoad);
+    appLog("socket buffers: %s (rc=0x%X)",
+           R_FAILED(g_socket_tune_rc) ? "libnx defaults, 256 KB window" : "2 MB window",
+           g_socket_tune_rc);
+    Result boost = appletSetCpuBoostMode(ApmCpuBoostMode_FastLoad);
+    appLog("cpu boost: %s (rc=0x%X)", R_FAILED(boost) ? "refused" : "on", boost);
     bool streamed = stream_firmware(fm, entry);
     if (!streamed)
         download_and_extract(fm, entry);
