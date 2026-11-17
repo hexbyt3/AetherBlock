@@ -1,5 +1,6 @@
 #include "ui.h"
 #include "payload_swap.h"
+#include "input.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -130,11 +131,29 @@ static void drawCategoryPill(SDL_Renderer *r, TTF_Font *font, const char *text,
     drawText(r, font, text, px + 8, y + 2, COL_TEXT_DIM);
 }
 
+static InputEvent hintEvent(const char *btn) {
+    static const struct { const char *btn; InputEvent ev; } map[] = {
+        {"A", INPUT_A}, {"B", INPUT_B}, {"X", INPUT_X}, {"Y", INPUT_Y},
+        {"L", INPUT_L}, {"R", INPUT_R}, {"ZL", INPUT_ZL}, {"ZR", INPUT_ZR},
+        {"+", INPUT_PLUS}, {"-", INPUT_MINUS},
+    };
+    for (size_t i = 0; i < sizeof(map) / sizeof(map[0]); i++)
+        if (strcmp(btn, map[i].btn) == 0) return map[i].ev;
+    return INPUT_NONE;
+}
+
+/* A button name and what it does. It is also a touch button: tapping it
+   does the same as pressing the button it names. */
 static void drawButtonHint(SDL_Renderer *r, TTF_Font *font, const char *btn,
                            const char *label, int x, int y) {
     int bw = textWidth(font, btn);
     int pill_w = bw + 14;
     int pill_h = 22;
+    int full_w = pill_w + 8 + textWidth(font, label);
+
+    drawRoundedRect(r, x - 10, y - 8, full_w + 20, 36, 8, COL_PROFILE_BG);
+    /* the tap area is taller than the drawn button: the whole bar it sits in */
+    inputTouchButton(x - 12, y - 19, full_w + 24, HINT_BAR_HEIGHT, hintEvent(btn));
     drawRoundedRect(r, x, y - 1, pill_w, pill_h, 5, COL_SEPARATOR);
     drawText(r, font, btn, x + 7, y + 1, COL_ACCENT);
     drawText(r, font, label, x + pill_w + 8, y + 1, COL_TEXT_HINT);
@@ -261,6 +280,9 @@ static void drawMainList(UIState *ui, HostsFile *hf) {
             drawRoundedRect(ui->renderer, 8, y - 3, SCREEN_WIDTH - 28, ROW_HEIGHT + 2, 6, COL_CURSOR_BG);
         }
 
+        if (!e->is_comment)
+            inputTouchRow(8, y - 2, SCREEN_WIDTH - 28, ROW_HEIGHT, &ui->cursor_index, i, INPUT_A);
+
         if (e->is_comment) {
             fillRect(ui->renderer, 20, y + ROW_HEIGHT - 6, SCREEN_WIDTH - 52, 1, COL_SEPARATOR);
             drawText(ui->renderer, ui->font_small, e->raw_line, 22, y + 4, COL_COMMENT);
@@ -287,7 +309,15 @@ static void drawMainList(UIState *ui, HostsFile *hf) {
         int ew = textWidth(ui->font_normal, empty);
         drawText(ui->renderer, ui->font_normal, empty,
                  (SCREEN_WIDTH - ew) / 2, (SCREEN_HEIGHT - 30) / 2, COL_TEXT_DIM);
+
+        const char *seed = "Seed Defaults";
+        int sw = textWidth(ui->font_small, "-") + 14 + 8 + textWidth(ui->font_small, seed);
+        drawButtonHint(ui->renderer, ui->font_small, "-", seed,
+                       (SCREEN_WIDTH - sw) / 2, (SCREEN_HEIGHT - 30) / 2 + 52);
     }
+
+    /* a swipe turns the page */
+    inputTouchSwipe(INPUT_LEFT, INPUT_RIGHT, 180);
 
     int list_h = LIST_BOTTOM_Y - LIST_TOP_Y;
     drawScrollbar(ui, hf, LIST_TOP_Y, list_h);
@@ -343,6 +373,8 @@ static void drawProfilesScreen(UIState *ui) {
             drawRoundedRect(ui->renderer, card_x, y, 4, card_h, 2, COL_ACCENT);
         }
 
+        inputTouchRow(card_x, y, card_w, card_h + card_gap, &ui->profile_cursor, i, INPUT_NONE);
+
         drawText(ui->renderer, ui->font_normal, PROFILE_DEFS[i].name, card_x + 20, y + 14, COL_TEXT);
         drawText(ui->renderer, ui->font_small, PROFILE_DEFS[i].description, card_x + 20, y + 42, COL_TEXT_DIM);
 
@@ -374,7 +406,9 @@ static void drawStatusScreen(UIState *ui) {
     int tx = (SCREEN_WIDTH - tw) / 2;
     drawText(ui->renderer, ui->font_normal, ui->status_msg, tx, cy + 50, COL_TEXT);
 
-    const char *hint = "Press any button to continue...";
+    inputTouchButton(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, INPUT_A);
+
+    const char *hint = "Tap or press any button to continue...";
     int hw = textWidth(ui->font_small, hint);
     drawText(ui->renderer, ui->font_small, hint, (SCREEN_WIDTH - hw) / 2, cy + card_h - 40, COL_TEXT_DIM);
 }
@@ -407,12 +441,14 @@ static void drawConfirmScreen(UIState *ui) {
 
     int qx = SCREEN_WIDTH / 2 - btn_w - gap / 2;
     drawRoundedRect(ui->renderer, qx, btn_y, btn_w, btn_h, 8, COL_BLOCKED);
+    inputTouchButton(qx, btn_y - 8, btn_w, btn_h + 16, INPUT_A);
     const char *qtext = "A  Quit";
     int qw = textWidth(ui->font_normal, qtext);
     drawText(ui->renderer, ui->font_normal, qtext, qx + (btn_w - qw) / 2, btn_y + (btn_h - 22) / 2, COL_TEXT);
 
     int bx = SCREEN_WIDTH / 2 + gap / 2;
     drawRoundedRect(ui->renderer, bx, btn_y, btn_w, btn_h, 8, COL_SEPARATOR);
+    inputTouchButton(bx, btn_y - 8, btn_w, btn_h + 16, INPUT_B);
     const char *btext = "B  Cancel";
     int bw = textWidth(ui->font_normal, btext);
     drawText(ui->renderer, ui->font_normal, btext, bx + (btn_w - bw) / 2, btn_y + (btn_h - 22) / 2, COL_TEXT);
@@ -517,6 +553,8 @@ static void drawNetTestScreen(UIState *ui) {
     fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, 1, COL_SEPARATOR);
     int ty = hy + (HINT_BAR_HEIGHT - 20) / 2 + 1;
 
+    inputTouchSwipe(INPUT_UP, INPUT_DOWN, 34);
+
     int tx = 30;
     drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
     if (ui->net_test.finished) {
@@ -605,6 +643,10 @@ static void drawSysSettingsScreen(UIState *ui) {
         if (selected)
             drawRoundedRect(ui->renderer, card_x, y, 4, card_h, 2, COL_ACCENT);
 
+        int top = y < list_top ? list_top : y;
+        int bot = y + card_h > list_bottom ? list_bottom : y + card_h;
+        inputTouchRow(card_x, top, card_w, bot - top, &ui->sys_settings_cursor, i, INPUT_A);
+
         drawToggle(ui->renderer, card_x + 20, y + (card_h - 18) / 2, def->toggled_on);
 
         drawText(ui->renderer, ui->font_normal, def->display_name, card_x + 70, y + 6, COL_TEXT);
@@ -616,6 +658,7 @@ static void drawSysSettingsScreen(UIState *ui) {
     }
 
     SDL_RenderSetClipRect(ui->renderer, NULL);
+    inputTouchSwipe(INPUT_UP, INPUT_DOWN, card_h + card_gap);
 
     int hy = SCREEN_HEIGHT - HINT_BAR_HEIGHT;
     fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, HINT_BAR_HEIGHT, COL_HINT_BAR_BG);
@@ -703,7 +746,9 @@ static void drawFwManagerScreen(UIState *ui) {
 
             drawText(ui->renderer, ui->font_normal, fm->entries[i].version,
                      60, ry + (card_h - 22) / 2, COL_TEXT);
+            inputTouchRow(30, ry, SCREEN_WIDTH - 60, card_h + card_gap, &fm->selected, i, INPUT_NONE);
         }
+        inputTouchSwipe(INPUT_UP, INPUT_DOWN, card_h + card_gap);
     } else if (fm->state == FW_STATE_IDLE) {
         int cy = SCREEN_HEIGHT / 2 - 10;
         const char *msg = "Press A to fetch firmware list";
@@ -724,6 +769,9 @@ static void drawFwManagerScreen(UIState *ui) {
                        fm->state == FW_STATE_IDLE ? "Fetch List" : "Download",
                        tx, ty);
         tx += 180;
+    } else if (fm->state == FW_STATE_ERROR) {
+        drawButtonHint(ui->renderer, ui->font_small, "A", "Try Again", tx, ty);
+        tx += 150;
     }
     drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
 }
@@ -873,6 +921,9 @@ static void drawCfwManagerScreen(UIState *ui) {
     } else if (cm->state == CFW_STATE_DONE) {
         drawButtonHint(ui->renderer, ui->font_small, "A", "Firmware", tx, ty);
         tx += 150;
+    } else if (cm->state == CFW_STATE_ERROR) {
+        drawButtonHint(ui->renderer, ui->font_small, "A", "Try Again", tx, ty);
+        tx += 150;
     }
     if (can_finish) {
         drawButtonHint(ui->renderer, ui->font_small, "X", "Finish Update", tx, ty);
@@ -949,6 +1000,7 @@ void uiShowToast(UIState *ui, const char *msg, SDL_Color color) {
 }
 
 void uiRender(UIState *ui, HostsFile *hf) {
+    inputTouchReset();
     setColor(ui->renderer, COL_BG);
     SDL_RenderClear(ui->renderer);
 

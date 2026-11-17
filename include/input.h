@@ -33,4 +33,16 @@ typedef struct {
 void inputInit(void);
 void inputPoll(InputState *state);
 
+/* Touch screen. While it draws a frame the UI says what can be tapped, and
+   inputPoll turns a tap into the button it stands for, so the screens
+   handle touch and a controller the same way. */
+void inputTouchReset(void);
+void inputTouchButton(int x, int y, int w, int h, InputEvent ev);
+/* a list row: a tap moves *cursor to value, then sends ev (INPUT_NONE to
+   only select) */
+void inputTouchRow(int x, int y, int w, int h, int *cursor, int value, InputEvent ev);
+/* dragging a finger down the screen sends `back` every step_px, dragging
+   up sends `forward` */
+void inputTouchSwipe(InputEvent back, InputEvent forward, int step_px);
+
 #endif
