@@ -16,6 +16,7 @@ typedef struct {
     FILE *fp;
     DownloadProgressCb cb;
     void *userdata;
+    long long base;   /* bytes already on disk from earlier attempts */
 } FileWriteCtx;
 
 typedef struct {
@@ -63,7 +64,7 @@ static int progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
     (void)ulnow;
     FileWriteCtx *fw = clientp;
     if (fw->cb && dltotal > 0)
-        fw->cb((size_t)dlnow, (size_t)dltotal, fw->userdata);
+        fw->cb((size_t)(fw->base + dlnow), (size_t)(fw->base + dltotal), fw->userdata);
     return s_abort_all ? 1 : 0;
 }
 
@@ -96,29 +97,42 @@ void downloadGlobalCleanup(void) {
     curl_global_cleanup();
 }
 
-/* one download attempt; on failure writes a human-readable cause into
-   reason and removes any partial file. Returns 0 on success. */
+#define DL_FAILED   (-1)   /* nothing worth keeping; the file is removed */
+#define DL_DROPPED  (-2)   /* connection died mid-transfer; the partial file stays */
+
+/* attempts allowed in total when each one keeps getting further */
+#define RESUME_ATTEMPT_CAP 60
+
+/* One download attempt, appending from resume_from when it is above zero.
+   On failure writes a human-readable cause into reason. Returns 0 on
+   success, DL_DROPPED or DL_FAILED otherwise. */
 static int download_once(const char *url, const char *output_path,
+                         long long resume_from,
                          DownloadProgressCb cb, void *userdata,
                          char *reason, size_t reason_size) {
-    FILE *fp = fopen(output_path, "wb");
+    FILE *fp = fopen(output_path, resume_from > 0 ? "ab" : "wb");
     if (!fp) {
         if (reason) snprintf(reason, reason_size, "cannot open %s for writing", output_path);
-        return -1;
+        remove(output_path);
+        return DL_FAILED;
     }
 
-    FileWriteCtx ctx = { .fp = fp, .cb = cb, .userdata = userdata };
+    FileWriteCtx ctx = { .fp = fp, .cb = cb, .userdata = userdata, .base = resume_from };
 
     CURL *curl = downloadMakeCurl(url);
     if (!curl) {
         fclose(fp);
         remove(output_path);
         if (reason) snprintf(reason, reason_size, "curl init failed");
-        return -1;
+        return DL_FAILED;
     }
 
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_file_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
+    /* keeps an error page out of the file */
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    if (resume_from > 0)
+        curl_easy_setopt(curl, CURLOPT_RESUME_FROM_LARGE, (curl_off_t)resume_from);
 
     if (cb) {
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
@@ -130,25 +144,44 @@ static int download_once(const char *url, const char *output_path,
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     curl_easy_cleanup(curl);
-    fclose(fp);
+    int close_rc = fclose(fp);
 
-    if (res != CURLE_OK) {
-        if (reason) snprintf(reason, reason_size, "network error: %s", curl_easy_strerror(res));
-        remove(output_path);
-        return -1;
-    }
-    if (http_code < 200 || http_code >= 400) {
+    if (res == CURLE_OK && close_rc == 0)
+        return 0;
+
+    if (res == CURLE_OK) {
+        if (reason) snprintf(reason, reason_size, "could not finish writing %s", output_path);
+    } else if (res == CURLE_HTTP_RETURNED_ERROR) {
         if (reason) snprintf(reason, reason_size, "server returned HTTP %ld", http_code);
-        remove(output_path);
-        return -1;
+    } else {
+        if (reason) snprintf(reason, reason_size, "network error: %s", curl_easy_strerror(res));
     }
-    return 0;
+
+    /* only a connection that died is worth picking up again; a refused
+       range, an HTTP error, a full card or a cancel starts clean */
+    bool dropped = close_rc == 0 &&
+                   (res == CURLE_OPERATION_TIMEDOUT || res == CURLE_PARTIAL_FILE ||
+                    res == CURLE_RECV_ERROR || res == CURLE_SEND_ERROR ||
+                    res == CURLE_COULDNT_CONNECT || res == CURLE_COULDNT_RESOLVE_HOST ||
+                    res == CURLE_SSL_CONNECT_ERROR || res == CURLE_GOT_NOTHING);
+    if (dropped && !s_abort_all)
+        return DL_DROPPED;
+
+    remove(output_path);
+    return DL_FAILED;
 }
 
 int downloadFile(const char *url, const char *output_path,
                  DownloadProgressCb cb, void *userdata) {
     char reason[160];
-    return download_once(url, output_path, cb, userdata, reason, sizeof(reason));
+    int rc = download_once(url, output_path, 0, cb, userdata, reason, sizeof(reason));
+    if (rc != 0) remove(output_path);
+    return rc == 0 ? 0 : -1;
+}
+
+static long long file_size(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0 ? (long long)st.st_size : -1;
 }
 
 int downloadFileChecked(const char *url, const char *output_path,
@@ -158,34 +191,71 @@ int downloadFileChecked(const char *url, const char *output_path,
     char reason[160] = "no attempt made";
     if (max_attempts < 1) max_attempts = 1;
 
-    for (int attempt = 1; attempt <= max_attempts; attempt++) {
-        if (download_once(url, output_path, cb, userdata, reason, sizeof(reason)) != 0) {
-            appLog("download attempt %d/%d failed: %s", attempt, max_attempts, reason);
+    /* A dropped transfer picks up where it stopped, and an attempt that got
+       further than the last one does not count against max_attempts. Without
+       a known size there is nothing to check a stitched file against, so
+       those downloads always start over, as does one whose server will not
+       resume. */
+    long long have = 0;
+    int stuck = 0;
+    bool can_resume = expected_size > 0;
+
+    for (int attempt = 1; stuck < max_attempts && attempt <= RESUME_ATTEMPT_CAP; attempt++) {
+        int rc = download_once(url, output_path, have, cb, userdata, reason, sizeof(reason));
+        if (rc != 0) {
+            /* a resume the server turned down is not worth asking for twice */
+            if (rc == DL_FAILED && have > 0)
+                can_resume = false;
+
+            long long got = -1;
+            if (rc == DL_DROPPED && can_resume)
+                got = file_size(output_path);
+
+            if (got > have && got < expected_size) {
+                appLog("download attempt %d dropped at %lld of %lld bytes (%s), resuming",
+                       attempt, got, expected_size, reason);
+                have = got;
+                stuck = 0;
+                continue;
+            }
+
+            stuck++;
+            appLog("download attempt %d failed (%d/%d without progress): %s",
+                   attempt, stuck, max_attempts, reason);
+            if (got != have || have <= 0) {
+                remove(output_path);
+                have = 0;
+            }
             continue;
         }
 
         if (expected_size > 0) {
-            struct stat st;
-            if (stat(output_path, &st) != 0) {
+            long long got = file_size(output_path);
+            if (got < 0) {
                 snprintf(reason, sizeof(reason), "downloaded file vanished before verification");
-                appLog("download attempt %d/%d: %s", attempt, max_attempts, reason);
+                appLog("download attempt %d: %s", attempt, reason);
+                have = 0;
+                stuck++;
                 continue;
             }
-            if ((long long)st.st_size != expected_size) {
+            if (got != expected_size) {
                 snprintf(reason, sizeof(reason), "incomplete: got %lld of %lld bytes",
-                         (long long)st.st_size, expected_size);
-                appLog("download attempt %d/%d %s", attempt, max_attempts, reason);
+                         got, expected_size);
+                appLog("download attempt %d %s", attempt, reason);
                 remove(output_path);
+                have = 0;
+                stuck++;
                 continue;
             }
         }
 
-        appLog("download ok on attempt %d/%d (%lld bytes)", attempt, max_attempts,
+        appLog("download ok on attempt %d (%lld bytes)", attempt,
                expected_size > 0 ? expected_size : (long long)0);
         if (reason_out && reason_out_size) reason_out[0] = '\0';
         return 0;
     }
 
+    remove(output_path);
     if (reason_out && reason_out_size)
         snprintf(reason_out, reason_out_size, "%s", reason);
     return -1;

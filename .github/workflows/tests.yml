@@ -49,6 +49,33 @@ jobs:
           echo "latest resolves to: $landed"
           echo "$landed" | grep -Eq '/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+$'
 
+      - name: A download that keeps dropping resumes and finishes
+        run: |
+          head -c 5000000 /dev/urandom > pkg.bin
+          python3 tests/flaky_server.py pkg.bin 8765 &
+          sleep 1
+
+          ./stream_e2e --get http://127.0.0.1:8765/good 5000000 got_good.bin 2> good.log
+          cat good.log
+          cmp pkg.bin got_good.bin
+          test "$(grep -c resuming good.log)" -ge 6
+
+          ./stream_e2e --get http://127.0.0.1:8765/stall 5000000 got_stall.bin 2> stall.log
+          cat stall.log
+          cmp pkg.bin got_stall.bin
+          grep -q 'Timeout was reached.*resuming' stall.log
+
+          # a server that ignores Range must never produce a stitched file
+          if ./stream_e2e --get http://127.0.0.1:8765/norange 5000000 got_norange.bin; then
+            echo "expected a failure"; exit 1
+          fi
+          test ! -e got_norange.bin
+
+          if ./stream_e2e --get http://127.0.0.1:8765/missing 5000000 got_missing.bin; then
+            echo "expected a failure"; exit 1
+          fi
+          test ! -e got_missing.bin
+
       - name: Download the newest firmware package both ways and compare
         env:
           GH_TOKEN: ${{ github.token }}

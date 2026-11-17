@@ -138,8 +138,7 @@ static void *download_worker(void *arg) {
                             progress_cb, cm, reason, sizeof(reason)) != 0) {
         cm->state = CFW_STATE_ERROR;
         snprintf(cm->error_text, sizeof(cm->error_text), "Download failed: %s", reason);
-        appLog("ERROR: download failed after %d attempts: %s",
-               DOWNLOAD_MAX_ATTEMPTS, reason);
+        appLog("ERROR: download gave up: %s", reason);
         cm->worker_active = false;
         return NULL;
     }

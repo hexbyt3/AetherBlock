@@ -20,11 +20,13 @@ CURL *downloadMakeCurl(const char *url);
 int downloadFile(const char *url, const char *output_path,
                  DownloadProgressCb cb, void *userdata);
 
-/* Like downloadFile but retries up to max_attempts and, when
-   expected_size > 0, requires the saved file to match that size exactly
-   (catching truncated/corrupt transfers that otherwise pass as success).
+/* Like downloadFile but retries and, when expected_size > 0, requires the
+   saved file to match that size exactly (catching truncated/corrupt
+   transfers that otherwise pass as success). With a known size a dropped
+   transfer resumes where it stopped, and it gives up only after
+   max_attempts tries in a row that got no further.
    On failure a human-readable reason is copied into reason_out.
-   Returns 0 on success, -1 once all attempts are exhausted. */
+   Returns 0 on success, -1 once it gives up. */
 int downloadFileChecked(const char *url, const char *output_path,
                         long long expected_size, int max_attempts,
                         DownloadProgressCb cb, void *userdata,

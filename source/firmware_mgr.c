@@ -197,8 +197,7 @@ static void download_and_extract(FirmwareManager *fm, FirmwareEntry *entry) {
         fm->state = FW_STATE_ERROR;
         snprintf(fm->error_text, sizeof(fm->error_text),
                  "Download failed for firmware %s: %s", entry->version, reason);
-        appLog("ERROR: firmware download failed after %d attempts: %s",
-               DOWNLOAD_MAX_ATTEMPTS, reason);
+        appLog("ERROR: firmware download gave up: %s", reason);
         return;
     }
 

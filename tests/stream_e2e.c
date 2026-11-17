@@ -1,8 +1,11 @@
 /* Runs the real network code on a PC against real URLs.
    usage: stream_e2e <url> <size-in-bytes> <out-dir/>   multi-connection download
           stream_e2e --resolve <url>                    print where redirects end
+          stream_e2e --get <url> <size> <out-file>      single download with retry + resume
    The "stream-e2e" CI job compares the download with unzip's output. */
 #include "stream_fetch.h"
+#include "download.h"
+#include "config.h"
 #include "applog.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -32,6 +35,17 @@ int main(int argc, char **argv) {
         }
         puts(landed);
         return 0;
+    }
+
+    if (argc == 5 && strcmp(argv[1], "--get") == 0) {
+        char why[160];
+        downloadGlobalInit();
+        int rc = downloadFileChecked(argv[2], argv[4], atoll(argv[3]),
+                                     DOWNLOAD_MAX_ATTEMPTS, NULL, NULL, why, sizeof(why));
+        downloadGlobalCleanup();
+        if (rc != 0) fprintf(stderr, "FAILED: %s
+", why);
+        return rc == 0 ? 0 : 1;
     }
 
     if (argc != 4) {
