@@ -1,6 +1,7 @@
 #include "firmware_mgr.h"
 #include "download.h"
 #include "stream_fetch.h"
+#include "worker.h"
 #include "extract.h"
 #include "pending.h"
 #include "payload_swap.h"
@@ -247,8 +248,11 @@ void fwMgrStartFetch(FirmwareManager *fm) {
     fm->count = 0;
     snprintf(fm->status_text, sizeof(fm->status_text), "Fetching firmware list...");
     fm->worker_active = true;
-    pthread_create(&fm->worker, NULL, fetch_worker, fm);
-    pthread_detach(fm->worker);
+    if (!workerStart(fetch_worker, fm)) {
+        fm->worker_active = false;
+        fm->state = FW_STATE_ERROR;
+        snprintf(fm->error_text, sizeof(fm->error_text), "Couldn't start a background task");
+    }
 }
 
 void fwMgrStartDownload(FirmwareManager *fm) {
@@ -260,8 +264,11 @@ void fwMgrStartDownload(FirmwareManager *fm) {
     snprintf(fm->status_text, sizeof(fm->status_text),
              "Downloading firmware %s...", fm->entries[fm->selected].version);
     fm->worker_active = true;
-    pthread_create(&fm->worker, NULL, download_worker, fm);
-    pthread_detach(fm->worker);
+    if (!workerStart(download_worker, fm)) {
+        fm->worker_active = false;
+        fm->state = FW_STATE_ERROR;
+        snprintf(fm->error_text, sizeof(fm->error_text), "Couldn't start a background task");
+    }
 }
 
 int fwMgrLaunchDaybreak(void) {

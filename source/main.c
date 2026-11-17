@@ -6,6 +6,7 @@
 
 #include "config.h"
 #include "applog.h"
+#include "worker.h"
 #include "hosts_parser.h"
 #include "dns_reload.h"
 #include "profiles.h"
@@ -453,6 +454,12 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
+    /* before anything allocates: an earlier run in this session may have
+       left parts of the heap locked */
+    int healed = workerReleaseLeakedStacks();
+    if (healed > 0)
+        appLog("released %d heap page(s) an earlier AetherBlock run left locked", healed);
+
     struct stat st;
     bool self_staged = stat(SELF_NRO PENDING_SUFFIX, &st) == 0;
 
@@ -571,6 +578,10 @@ int main(int argc, char *argv[]) {
 
         uiRender(&s_ui, &s_hosts);
     }
+
+    /* every background task must be finished and joined before we leave,
+       or its stack stays locked in the heap the next app inherits */
+    workerShutdown();
 
     uiDestroy(&s_ui);
     downloadGlobalCleanup();

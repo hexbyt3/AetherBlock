@@ -1,6 +1,7 @@
 #include "self_update.h"
 #include "download.h"
 #include "pending.h"
+#include "worker.h"
 #include "config.h"
 #include "applog.h"
 #include <minizip/unzip.h>
@@ -196,8 +197,10 @@ static void start(SelfUpdate *su, SelfUpdateState state, const char *message) {
     su->state = state;
     snprintf(su->message, sizeof(su->message), "%s", message);
     su->worker_active = true;
-    pthread_create(&su->worker, NULL, worker_main, su);
-    pthread_detach(su->worker);
+    if (!workerStart(worker_main, su)) {
+        su->worker_active = false;
+        su->state = SU_IDLE;
+    }
 }
 
 void selfUpdateCheck(SelfUpdate *su, bool install_too) {

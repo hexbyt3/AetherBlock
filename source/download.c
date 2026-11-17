@@ -44,6 +44,19 @@ static size_t write_mem_cb(void *ptr, size_t size, size_t nmemb, void *ctx) {
     return bytes;
 }
 
+static volatile bool s_abort_all;
+
+void downloadAbortAll(void) {
+    s_abort_all = true;
+}
+
+/* curl polls this during a transfer; nonzero cancels it */
+static int abort_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
+                    curl_off_t ultotal, curl_off_t ulnow) {
+    (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
+    return s_abort_all ? 1 : 0;
+}
+
 static int progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
                        curl_off_t ultotal, curl_off_t ulnow) {
     (void)ultotal;
@@ -51,7 +64,7 @@ static int progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
     FileWriteCtx *fw = clientp;
     if (fw->cb && dltotal > 0)
         fw->cb((size_t)dlnow, (size_t)dltotal, fw->userdata);
-    return 0;
+    return s_abort_all ? 1 : 0;
 }
 
 CURL *downloadMakeCurl(const char *url) {
@@ -69,6 +82,8 @@ CURL *downloadMakeCurl(const char *url) {
     /* no overall time limit, but a transfer that crawls for 30 s is dead */
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 4096L);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, abort_cb);
 
     return curl;
 }

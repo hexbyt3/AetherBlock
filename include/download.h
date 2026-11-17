@@ -10,6 +10,10 @@ typedef void (*DownloadProgressCb)(size_t current, size_t total, void *userdata)
 void downloadGlobalInit(void);
 void downloadGlobalCleanup(void);
 
+/* Make every transfer, running or yet to start, stop within about a second.
+   Used when the app is closing. */
+void downloadAbortAll(void);
+
 /* A handle with the app's standard options (user agent, redirects, timeouts). */
 CURL *downloadMakeCurl(const char *url);
 

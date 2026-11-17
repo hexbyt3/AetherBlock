@@ -2,7 +2,6 @@
 #define CFW_MGR_H
 
 #include <stdbool.h>
-#include <pthread.h>
 
 typedef enum {
     CFW_STATE_IDLE = 0,
@@ -27,7 +26,6 @@ typedef struct {
     char        status_text[256];
     char        error_text[256];
     char        failed_files[1024];
-    pthread_t   worker;
     bool        worker_active;
 } CfwPackageManager;
 

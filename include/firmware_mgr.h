@@ -2,7 +2,6 @@
 #define FIRMWARE_MGR_H
 
 #include <stdbool.h>
-#include <pthread.h>
 
 #define FW_MAX_ENTRIES 64
 
@@ -30,7 +29,6 @@ typedef struct {
     float         progress;
     char          status_text[256];
     char          error_text[256];
-    pthread_t     worker;
     bool          worker_active;
     char          cur_version[16];   /* installed HOS, e.g. "20.1.0" */
 } FirmwareManager;

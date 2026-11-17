@@ -1,4 +1,5 @@
 #include "cfw_mgr.h"
+#include "worker.h"
 #include "download.h"
 #include "extract.h"
 #include "pending.h"
@@ -197,8 +198,11 @@ void cfwMgrStartFetch(CfwPackageManager *cm) {
     cm->state = CFW_STATE_FETCHING;
     snprintf(cm->status_text, sizeof(cm->status_text), "Checking for updates...");
     cm->worker_active = true;
-    pthread_create(&cm->worker, NULL, fetch_worker, cm);
-    pthread_detach(cm->worker);
+    if (!workerStart(fetch_worker, cm)) {
+        cm->worker_active = false;
+        cm->state = CFW_STATE_ERROR;
+        snprintf(cm->error_text, sizeof(cm->error_text), "Couldn't start a background task");
+    }
 }
 
 void cfwMgrStartDownload(CfwPackageManager *cm) {
@@ -209,8 +213,11 @@ void cfwMgrStartDownload(CfwPackageManager *cm) {
     snprintf(cm->status_text, sizeof(cm->status_text),
              "Downloading CFW package %s...", cm->latest_tag);
     cm->worker_active = true;
-    pthread_create(&cm->worker, NULL, download_worker, cm);
-    pthread_detach(cm->worker);
+    if (!workerStart(download_worker, cm)) {
+        cm->worker_active = false;
+        cm->state = CFW_STATE_ERROR;
+        snprintf(cm->error_text, sizeof(cm->error_text), "Couldn't start a background task");
+    }
 }
 
 int cfwMgrReboot(bool is_mariko) {

@@ -2,7 +2,6 @@
 #define SELF_UPDATE_H
 
 #include <stdbool.h>
-#include <pthread.h>
 
 /* Updates AetherBlock itself from its own GitHub releases, without
    reinstalling the CFW package: the new .nro is staged next to the running
@@ -28,7 +27,6 @@ typedef struct {
     bool      install_after_check;
     bool      announced;       /* the main screen has shown its "available" notice */
     bool      worker_active;
-    pthread_t worker;
 } SelfUpdate;
 
 /* Look up the newest release in the background. With install set, a newer
