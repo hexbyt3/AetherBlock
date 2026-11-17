@@ -43,8 +43,7 @@ int main(int argc, char **argv) {
         int rc = downloadFileChecked(argv[2], argv[4], atoll(argv[3]),
                                      DOWNLOAD_MAX_ATTEMPTS, NULL, NULL, why, sizeof(why));
         downloadGlobalCleanup();
-        if (rc != 0) fprintf(stderr, "FAILED: %s
-", why);
+        if (rc != 0) fprintf(stderr, "FAILED: %s\n", why);
         return rc == 0 ? 0 : 1;
     }
 
