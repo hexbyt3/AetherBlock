@@ -43,6 +43,12 @@ jobs:
             tests/stream_e2e.c source/stream_fetch.c source/zip_stream.c \
             source/download.c lib/cJSON.c -lcurl -lz -lpthread -o stream_e2e
 
+      - name: Self-update version lookup lands on a release tag
+        run: |
+          landed=$(./stream_e2e --resolve https://github.com/hexbyt3/AetherBlock/releases/latest)
+          echo "latest resolves to: $landed"
+          echo "$landed" | grep -Eq '/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+$'
+
       - name: Download the newest firmware package both ways and compare
         env:
           GH_TOKEN: ${{ github.token }}

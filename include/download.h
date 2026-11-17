@@ -35,6 +35,10 @@ int downloadRangeToMemory(const char *url, const char *range,
                           char **out_buf, size_t *out_len,
                           char *final_url, size_t final_url_size);
 
+/* Follow url's redirects without downloading anything and report where it
+   ends up. Returns 0 when the final page answered successfully. */
+int downloadResolveUrl(const char *url, char *final_url, size_t final_url_size);
+
 int fetchJson(const char *url, cJSON **out_json);
 
 int checkFreeSpace(long long required_bytes, long long *out_free);

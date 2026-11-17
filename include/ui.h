@@ -11,6 +11,7 @@
 #include "sys_settings.h"
 #include "firmware_mgr.h"
 #include "cfw_mgr.h"
+#include "self_update.h"
 
 typedef enum {
     SCREEN_MAIN_LIST = 0,
@@ -51,6 +52,7 @@ typedef struct {
 
     FirmwareManager    fw_mgr;
     CfwPackageManager  cfw_mgr;
+    SelfUpdate         self_update;
     char               current_fw_version[32];
 } UIState;
 

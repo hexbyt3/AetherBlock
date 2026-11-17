@@ -63,6 +63,10 @@ NEW!  Firmware & CFW Updates
 - Downloads firmware over three connections at once, straight into `/firmware/` with every file checksum-verified, then hands off to Daybreak for installation
 - No PC required -- download and install all from the homebrew menu
 
+### Updating AetherBlock itself
+- AetherBlock checks for a newer version of itself when it opens and tells you if there is one
+- Press **ZR**, then **Y** to download it, and **Y** again to restart into the new version -- no reboot and no CFW reinstall
+
 ### CFW Package Updater
 - Downloads the latest [CFW4SysBots](https://github.com/hexbyt3/CFW4SysBots) package directly from GitHub
 - Includes everything: Atmosphere, Hekate, sys-botbase, ldn_mitm, AetherBlock, and more

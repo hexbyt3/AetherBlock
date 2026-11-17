@@ -834,11 +834,28 @@ static void drawCfwManagerScreen(UIState *ui) {
     }
     bool can_finish = swap_waiting && cm->state != CFW_STATE_DONE &&
                       cm->state != CFW_STATE_DOWNLOADING && cm->state != CFW_STATE_EXTRACTING;
+    int note_y = SCREEN_HEIGHT - HINT_BAR_HEIGHT - 34;
     if (can_finish) {
         const char *msg = "A CFW update is on the card but not active yet. Press X to restart and finish it.";
         int mw = textWidth(ui->font_small, msg);
-        drawText(ui->renderer, ui->font_small, msg,
-                 (SCREEN_WIDTH - mw) / 2, SCREEN_HEIGHT - HINT_BAR_HEIGHT - 34, COL_ACCENT);
+        drawText(ui->renderer, ui->font_small, msg, (SCREEN_WIDTH - mw) / 2, note_y, COL_ACCENT);
+        note_y -= 26;
+    }
+
+    /* AetherBlock's own update, separate from the CFW package */
+    const SelfUpdate *su = &ui->self_update;
+    bool cfw_busy = cm->state == CFW_STATE_DOWNLOADING || cm->state == CFW_STATE_EXTRACTING;
+    if (su->state != SU_IDLE && !cfw_busy) {
+        char line[200];
+        if (su->state == SU_DOWNLOADING)
+            snprintf(line, sizeof(line), "%s %d%%", su->message, (int)(su->progress * 100));
+        else
+            snprintf(line, sizeof(line), "%s", su->message);
+        SDL_Color col = su->state == SU_ERROR ? COL_ALLOWED
+                      : (su->state == SU_AVAILABLE || su->state == SU_READY) ? COL_ACCENT
+                      : COL_TEXT_DIM;
+        int lw = textWidth(ui->font_small, line);
+        drawText(ui->renderer, ui->font_small, line, (SCREEN_WIDTH - lw) / 2, note_y, col);
     }
 
     int hy = SCREEN_HEIGHT - HINT_BAR_HEIGHT;
@@ -860,6 +877,11 @@ static void drawCfwManagerScreen(UIState *ui) {
     if (can_finish) {
         drawButtonHint(ui->renderer, ui->font_small, "X", "Finish Update", tx, ty);
         tx += 200;
+    }
+    if (!cfw_busy && !su->worker_active) {
+        drawButtonHint(ui->renderer, ui->font_small, "Y",
+                       su->state == SU_READY ? "Restart AetherBlock" : "Update AetherBlock", tx, ty);
+        tx += su->state == SU_READY ? 250 : 240;
     }
     drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
 }

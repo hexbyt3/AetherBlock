@@ -395,6 +395,26 @@ static void handleCfwManager(InputState *input) {
             }
             break;
 
+        case INPUT_Y: {
+            /* update AetherBlock on its own, without the CFW package */
+            SelfUpdate *su = &s_ui.self_update;
+            if (su->worker_active)
+                break;
+            if (su->state == SU_READY) {
+                if (selfUpdateRestart()) {
+                    s_hosts.dirty = false;
+                    s_exit_requested = true;
+                    return;
+                }
+                uiShowToast(&s_ui, "Couldn't restart -- close and reopen AetherBlock", TOAST_ERROR);
+            } else if (su->state == SU_AVAILABLE) {
+                selfUpdateInstall(su);
+            } else {
+                selfUpdateCheck(su, true);
+            }
+            break;
+        }
+
         case INPUT_X:
             /* a CFW update that is on the card but not yet swapped in (the
                console was restarted some other way, or Daybreak was refused)
@@ -428,8 +448,6 @@ static bool shouldQuit(InputState *input) {
 
 /* result of asking for the larger socket buffers; the firmware log reports it */
 Result g_socket_tune_rc;
-
-#define SELF_NRO "/switch/AetherBlock/AetherBlock.nro"
 
 int main(int argc, char *argv[]) {
     (void)argc;
@@ -501,11 +519,25 @@ int main(int argc, char *argv[]) {
     fwMgrInit(&s_ui.fw_mgr, cfw.fw_version);
     cfwMgrInit(&s_ui.cfw_mgr);
 
+    /* quietly look for a newer AetherBlock; the main screen says so if
+       there is one */
+    selfUpdateCheck(&s_ui.self_update, false);
+
     inputInit();
 
     while (appletMainLoop()) {
         InputState input;
         inputPoll(&input);
+
+        SelfUpdate *su = &s_ui.self_update;
+        if (su->state == SU_AVAILABLE && !su->announced &&
+            s_ui.current_screen == SCREEN_MAIN_LIST) {
+            char note[128];
+            snprintf(note, sizeof(note),
+                     "AetherBlock %s is available: press ZR, then Y to update", su->latest);
+            uiShowToast(&s_ui, note, TOAST_INFO);
+            su->announced = true;
+        }
 
         if (shouldQuit(&input))
             break;

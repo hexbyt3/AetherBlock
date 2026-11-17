@@ -233,6 +233,24 @@ int downloadRangeToMemory(const char *url, const char *range,
     return fetch_to_memory(url, range, out_buf, out_len, final_url, final_url_size);
 }
 
+int downloadResolveUrl(const char *url, char *final_url, size_t final_url_size) {
+    CURL *curl = downloadMakeCurl(url);
+    if (!curl) return -1;
+
+    curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);
+
+    CURLcode res = curl_easy_perform(curl);
+    long http_code = 0;
+    char *eff = NULL;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &eff);
+    bool ok = res == CURLE_OK && http_code >= 200 && http_code < 300 && eff;
+    if (ok) snprintf(final_url, final_url_size, "%s", eff);
+    curl_easy_cleanup(curl);
+    return ok ? 0 : -1;
+}
+
 int fetchJson(const char *url, cJSON **out_json) {
     char *buf = NULL;
     size_t len = 0;
