@@ -2,8 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <switch.h>
+#include <sys/stat.h>
 
 #include "config.h"
+#include "applog.h"
 #include "hosts_parser.h"
 #include "dns_reload.h"
 #include "profiles.h"
@@ -298,6 +300,20 @@ static void handleSysSettings(InputState *input) {
     }
 }
 
+/* Reboot into the pre-boot swap that puts a staged CFW update in place.
+   Does not return when the reboot goes through. */
+static void finalizeCfwUpdate(void) {
+    CfwInfo cfw;
+    detectCfwInfo(&cfw);
+
+    uiShowToast(&s_ui, "Finalizing CFW update, rebooting...", TOAST_INFO);
+    uiRender(&s_ui, &s_hosts);
+    if (cfwMgrReboot(cfw.is_mariko) == CFW_REBOOT_SWAP_FAILED)
+        uiShowToast(&s_ui, "Couldn't set up the CFW swap -- see last_error.log", TOAST_ERROR);
+    else
+        uiShowToast(&s_ui, "Reboot failed", TOAST_ERROR);
+}
+
 static void handleFwManager(InputState *input) {
     FirmwareManager *fm = &s_ui.fw_mgr;
 
@@ -311,15 +327,8 @@ static void handleFwManager(InputState *input) {
                 fwMgrStartFetch(fm);
             } else if (fm->state == FW_STATE_READY) {
                 if (fm->count == 0 && swapPending()) {
-                    /* no firmware to install but a CFW update is staged --
-                       reboot into the swap payload to finalize it. On success
-                       this does not return. */
-                    uiShowToast(&s_ui, "Finalizing CFW update, rebooting...", TOAST_INFO);
-                    uiRender(&s_ui, &s_hosts);
-                    if (cfwMgrReboot(s_ui.cfw_mgr.is_mariko) == CFW_REBOOT_SWAP_FAILED)
-                        uiShowToast(&s_ui, "Couldn't set up the CFW swap -- see last_error.log", TOAST_ERROR);
-                    else
-                        uiShowToast(&s_ui, "Reboot failed", TOAST_ERROR);
+                    /* no firmware to install but a CFW update is staged */
+                    finalizeCfwUpdate();
                 } else {
                     fwMgrStartDownload(fm);
                 }
@@ -332,7 +341,7 @@ static void handleFwManager(InputState *input) {
                     s_exit_requested = true;
                     return;
                 } else if (lrc == FW_LAUNCH_CFW_STAGED) {
-                    uiShowToast(&s_ui, "Finish the CFW update before installing firmware", TOAST_ERROR);
+                    uiShowToast(&s_ui, "CFW update isn't finished: press B, then ZR, then X to finish it", TOAST_ERROR);
                 } else {
                     uiShowToast(&s_ui, "Daybreak not found at /switch/daybreak.nro", TOAST_ERROR);
                 }
@@ -386,6 +395,14 @@ static void handleCfwManager(InputState *input) {
             }
             break;
 
+        case INPUT_X:
+            /* a CFW update that is on the card but not yet swapped in (the
+               console was restarted some other way, or Daybreak was refused)
+               can be finished from here on its own */
+            if (cm->state != CFW_STATE_DONE && swapPending())
+                finalizeCfwUpdate();
+            break;
+
         case INPUT_B:
             if (cm->state == CFW_STATE_ERROR)
                 cm->state = CFW_STATE_IDLE;
@@ -412,9 +429,14 @@ static bool shouldQuit(InputState *input) {
 /* result of asking for the larger socket buffers; the firmware log reports it */
 Result g_socket_tune_rc;
 
+#define SELF_NRO "/switch/AetherBlock/AetherBlock.nro"
+
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
+
+    struct stat st;
+    bool self_staged = stat(SELF_NRO PENDING_SUFFIX, &st) == 0;
 
     /* finish any CFW file swaps that were staged before the last reboot
        (package3, stratosphere.romfs, AetherBlock.nro, etc.). This must run
@@ -422,6 +444,15 @@ int main(int argc, char *argv[]) {
        of the process, and an open file can't be renamed, so a staged
        AetherBlock.nro would never swap in. */
     pendingApply();
+
+    /* If that just replaced our own .nro, this process is still the old
+       version. Start over in the new one now -- otherwise the user runs the
+       old code for a whole session while the card says they're updated. */
+    if (self_staged && stat(SELF_NRO PENDING_SUFFIX, &st) != 0) {
+        appLog("AetherBlock updated itself -- restarting into the new version");
+        if (R_SUCCEEDED(envSetNextLoad(SELF_NRO, "\"" SELF_NRO "\"")))
+            return 0;
+    }
 
     romfsInit();
     plInitialize(PlServiceType_User);

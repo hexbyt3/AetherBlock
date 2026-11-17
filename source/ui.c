@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "payload_swap.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -824,6 +825,22 @@ static void drawCfwManagerScreen(UIState *ui) {
                  (SCREEN_WIDTH - mw) / 2, cy, COL_TEXT_DIM);
     }
 
+    /* checking the card every frame is wasteful; once a second is plenty */
+    static int swap_check_frames = 0;
+    static bool swap_waiting = false;
+    if (swap_check_frames-- <= 0) {
+        swap_waiting = swapPending();
+        swap_check_frames = 60;
+    }
+    bool can_finish = swap_waiting && cm->state != CFW_STATE_DONE &&
+                      cm->state != CFW_STATE_DOWNLOADING && cm->state != CFW_STATE_EXTRACTING;
+    if (can_finish) {
+        const char *msg = "A CFW update is on the card but not active yet. Press X to restart and finish it.";
+        int mw = textWidth(ui->font_small, msg);
+        drawText(ui->renderer, ui->font_small, msg,
+                 (SCREEN_WIDTH - mw) / 2, SCREEN_HEIGHT - HINT_BAR_HEIGHT - 34, COL_ACCENT);
+    }
+
     int hy = SCREEN_HEIGHT - HINT_BAR_HEIGHT;
     fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, HINT_BAR_HEIGHT, COL_HINT_BAR_BG);
     fillRect(ui->renderer, 0, hy, SCREEN_WIDTH, 1, COL_SEPARATOR);
@@ -839,6 +856,10 @@ static void drawCfwManagerScreen(UIState *ui) {
     } else if (cm->state == CFW_STATE_DONE) {
         drawButtonHint(ui->renderer, ui->font_small, "A", "Firmware", tx, ty);
         tx += 150;
+    }
+    if (can_finish) {
+        drawButtonHint(ui->renderer, ui->font_small, "X", "Finish Update", tx, ty);
+        tx += 200;
     }
     drawButtonHint(ui->renderer, ui->font_small, "B", "Back", tx, ty);
 }
